@@ -249,6 +249,17 @@ app.post('/api/admin/student',requireAdmin,(req,res)=>{
   res.json({ok:true,user:sanitizeUser(u)});
 });
 
+app.post('/api/admin/student/:id/delete',requireAdmin,(req,res)=>{
+  const d=load();
+  const u=d.users.find(x=>x.id===req.params.id && x.role==='student');
+  if(!u)return res.status(404).json({error:'Student not found.'});
+  u.status='deleted';
+  delete u.sessionToken;
+  for(const [token,entry] of pendingStudentRegistrations.entries()){ if(entry.userId===u.id) pendingStudentRegistrations.delete(token); }
+  save(d);
+  res.json({ok:true,message:'Student account deleted.'});
+});
+
 app.post('/api/admin/student/:id/password',requireAdmin,(req,res)=>{
   const d=load(),u=d.users.find(x=>x.id===req.params.id && x.role==='student');
   const next=String(req.body.password||'');
