@@ -20,3 +20,7 @@ No OTP is used by the student or Super Admin login.
 
 ## Security note
 Student IDs are identifiers, not passwords. Passwords are stored as scrypt hashes. New self-registered students are not automatically enrolled in paid courses; course access is controlled by the existing enrollment/payment workflow.
+
+
+## V2 FIX
+Student dashboard navigation helpers were restored (go, course, active, enrollment, progress, logout, toggleSidebar). The previous `go is not defined` runtime error is fixed.

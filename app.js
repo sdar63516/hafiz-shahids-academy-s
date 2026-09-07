@@ -48,6 +48,59 @@ $('studentLoginForm').addEventListener('submit',async e=>{
 });
 function backToName(){$('studentLoginForm').classList.add('hidden');$('nameForm').classList.remove('hidden');$('studentPassword').value='';$('registrationToken').value='';$('studentId').value=''}
 
+
+// ---------------- Student dashboard navigation helpers ----------------
+function course(id){ return (DB?.courses||[]).find(c=>String(c.id)===String(id)); }
+function enrollment(courseId){
+  return (current?.enrollments||[]).find(e=>String(e.courseId)===String(courseId));
+}
+function active(courseId){
+  if(current?.role==='superadmin') return !!course(courseId);
+  const e=enrollment(courseId);
+  return !!e && e.status==='active' && new Date(e.endDate)>=new Date();
+}
+function progress(courseId){
+  const value=Number((current?.progress||{})[courseId]||0);
+  return Math.max(0,Math.min(100,value));
+}
+function go(page){
+  if(!current){ return; }
+  const routes={
+    home:renderHome,
+    courses:renderCourses,
+    purchased:renderPurchased,
+    materials:renderMaterials,
+    downloads:renderDownloads,
+    assignments:renderAssignments,
+    live:renderLive,
+    certificates:renderCertificates,
+    profile:renderProfile,
+    settings:renderSettings,
+    notifications:renderNotifications
+  };
+  const render=routes[page]||renderHome;
+  const result=render();
+  document.querySelectorAll('[data-nav]').forEach(btn=>{
+    btn.classList.toggle('active',btn.dataset.nav===page);
+  });
+  document.getElementById('sidebar')?.classList.remove('open');
+  return result;
+}
+function toggleSidebar(){
+  document.getElementById('sidebar')?.classList.toggle('open');
+}
+function logout(){
+  studentToken='';
+  current=null;
+  localStorage.removeItem('hsa_student_token');
+  localStorage.removeItem('hsa_user');
+  document.getElementById('app')?.classList.add('hidden');
+  document.getElementById('loginGate')?.classList.remove('hidden');
+  document.getElementById('nameForm')?.classList.remove('hidden');
+  document.getElementById('studentLoginForm')?.classList.add('hidden');
+  document.getElementById('studentName')?.focus();
+}
+
 function renderHome(){const posts=DB.posts||[];const mine=(current.enrollments||[]).filter(e=>e.status==='active');$('content').innerHTML=`<section class="hero reveal"><div class="hero-copy"><div class="eyebrow">HAFIZ SHAHID'S ACADEMY</div><h1>Learn today.<br><span>Grow for life.</span></h1><p>Recorded classes, live Zoom sessions, assignments, study material and certificates — built around your learning journey.</p><div class="row"><button class="primary" onclick="go('courses')">Explore Courses →</button><button class="outline" onclick="go('purchased')">My Learning</button></div><div class="hero-pills"><span>✓ Phone OTP Login</span><span>✓ Verified Payments</span><span>✓ 80% Certificate</span></div></div><div class="hero-photo" style="background-image:url('${DB.settings.heroImage||'/shahid.jpg'}')"><div class="photo-tag">Hafiz Shahid<br><small>Founder & Educator</small></div></div></section><div class="feature-strip"><div>🎥<b>Recorded Classes</b><span>Upload MP4 or YouTube</span></div><div>📹<b>Live Classes</b><span>Join through Zoom</span></div><div>📝<b>Assignments</b><span>Submit & get graded</span></div><div>🏆<b>Certificates</b><span>Unlock at 80%</span></div></div><div class="page-head"><div><div class="eyebrow">YOUR JOURNEY</div><h1>Welcome, ${current.name||'Student'}</h1><p>Your active courses and latest academy updates.</p></div><button class="outline" onclick="go('notifications')">Notifications</button></div><div class="grid"><div class="card"><h3>Purchased Courses</h3>${mine.length?mine.map(e=>learningCard(e)).join(''):`<div class="empty">No purchased courses yet.<br><button class="primary" style="margin-top:12px" onclick="go('courses')">Find a Course</button></div>`}</div><div class="card"><h3>Latest Posts</h3>${posts.slice(0,3).map(p=>`<article class="post"><img src="${p.image||'/shahid.jpg'}"><div><b>${p.title}</b><p>${p.text}</p><small>${new Date(p.createdAt).toLocaleDateString('en-IN')}</small></div></article>`).join('')||'<div class="empty">No posts yet.</div>'}</div></div>`}
 function learningCard(e){const c=course(e.courseId);return `<div class="learning-card"><div class="thumb" style="background-image:url('${c?.image||'/shahid.jpg'}')"></div><div><span class="badge">${c?.category||'Course'}</span><h3>${c?.title||e.courseTitle}</h3><div class="small">Access until ${new Date(e.endDate).toLocaleDateString('en-IN')}</div><div class="progress" style="margin-top:10px"><i style="width:${progress(e.courseId)}%"></i></div><div class="small" style="margin-top:5px">${progress(e.courseId)}% complete</div></div><button class="primary" onclick="openCourse('${e.courseId}')">Continue</button></div>`}
 function renderCourses(){const cs=DB.courses||[];$('content').innerHTML=`<div class="page-head"><div><div class="eyebrow">ACADEMY CATALOG</div><h1>Explore Courses</h1><p>Choose a course, submit your details and pay securely through the academy QR.</p></div><input class="search" id="courseSearch" placeholder="Search courses…" oninput="filterCourses()"></div><div id="courseGrid" class="course-grid">${cs.map(courseCard).join('')}</div>`}
