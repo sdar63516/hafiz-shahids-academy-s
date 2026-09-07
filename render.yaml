@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: hafiz-shahids-academy
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SUPER_ADMIN_PHONE
+        value: 9858866415
+      - key: DATABASE_URL
+        sync: false

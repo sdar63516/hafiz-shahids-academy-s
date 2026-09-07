@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Hafiz Shahid's Academy</title>
+    <meta name="description"
+        content="Hafiz Shahid's Academy — courses, recorded classes, live Zoom classes, assignments and study material.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+    <div id="toast"></div>
+    <section id="loginGate" class="gate">
+        <div class="gate-left">
+            <div class="gate-brand"><span class="mark big" id="loginBrandMark">HSA</span><b>HAFIZ
+                    SHAHID'S<br>ACADEMY</b></div><img id="loginPhoto" src="/shahid.jpg" alt="Hafiz Shahid">
+            <div class="quote">“Knowledge is the key to a better future.”</div><small>Learn • Practice • Grow</small>
+        </div>
+        <div class="gate-right">
+            <div class="eyebrow">SECURE STUDENT LOGIN</div>
+            <h1>Welcome <span>back.</span></h1>
+            <p class="lead">Login with the phone number you currently use. We’ll send a one-time OTP.</p>
+            <form id="phoneForm" class="form"><label>Country</label><select id="country">
+                    <option value="+91">India +91</option>
+                    <option value="+92">Pakistan +92</option>
+                    <option value="+1">USA/Canada +1</option>
+                    <option value="+44">UK +44</option>
+                    <option value="+971">UAE +971</option>
+                </select><label>Mobile number</label><input id="phone" inputmode="numeric" maxlength="10"
+                    placeholder="10-digit mobile number" required><button class="primary">Send OTP →</button></form>
+            <form id="otpForm" class="form hidden"><label>Enter OTP</label><input id="otp" inputmode="numeric"
+                    maxlength="6" placeholder="4-6 digit OTP" required>
+                <div id="otpDemo" class="demo-note"></div><button class="primary">Verify & Continue</button><button
+                    type="button" class="outline" onclick="resendOtp()">Resend OTP</button><button type="button"
+                    class="outline" onclick="backToPhone()">Change number</button>
+            </form>
+            <p class="small">Your account is identified by your verified phone number. A new login on another device
+                ends the previous session for that number.</p>
+            <p><a href="#" onclick="showAdminLogin();return false">Owner / Admin login</a></p>
+        </div>
+    </section>
+    <section id="app" class="hidden">
+        <header class="topbar"><a class="brand" href="#" onclick="go('home');return false"><span class="mark"
+                    id="brandMark">HSA</span><span>Hafiz Shahid's<br><b>Academy</b></span></a><button
+                class="mobile-menu" onclick="toggleSidebar()">☰</button>
+            <div class="top-user"><a id="ownerPanel" class="outline hidden" href="/admin.html">Super Admin</a><button
+                    class="icon-btn" onclick="go('notifications')">🔔<i id="notifDot"></i></button><span
+                    id="userName"></span><button class="avatar" onclick="go('profile')" id="topAvatar">HS</button></div>
+        </header>
+        <div class="layout">
+            <aside id="sidebar">
+                <div class="side-title">MY LEARNING</div><button onclick="go('home')" data-nav="home">⌂
+                    Dashboard</button><button onclick="go('courses')" data-nav="courses">▣ Courses</button><button
+                    onclick="go('purchased')" data-nav="purchased">▦ Purchased Courses</button><button
+                    onclick="go('materials')" data-nav="materials">▤ Study Material</button><button
+                    onclick="go('downloads')" data-nav="downloads">⇩ Downloads</button><button
+                    onclick="go('assignments')" data-nav="assignments">✓ Assignments</button><button
+                    onclick="go('live')" data-nav="live">◉ Live Classes</button><button onclick="go('certificates')"
+                    data-nav="certificates">◇ My Certificate</button>
+                <div class="side-title">ACCOUNT</div><button onclick="go('profile')" data-nav="profile">◯ About
+                    Me</button><button onclick="go('settings')" data-nav="settings">⚙ Settings</button><button
+                    onclick="logout()">↪ Logout</button>
+                <div class="side-help"><b>Need help?</b><span>Contact Hafiz Shahid's Academy support.</span></div>
+            </aside>
+            <main id="content"></main>
+        </div>
+    </section>
+    <div id="modal" class="modal hidden">
+        <div class="modal-card"><button class="close" onclick="closeModal()">×</button>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+    <script src="/app.js"></script>
+</body>
+
+</html>

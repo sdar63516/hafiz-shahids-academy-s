@@ -1,0 +1,14 @@
+{
+  "name": "hafiz-shahids-academy",
+  "version": "5.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "dbcheck": "node -e \"require(\\\"./db\\\").initStore().then(()=>{console.log(\\\"Database store OK\\\");process.exit(0)}).catch(e=>{console.error(e);process.exit(1)})\""
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1",
+    "pg": "^8.16.3"
+  }
+}

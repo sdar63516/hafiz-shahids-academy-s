@@ -1,0 +1,113 @@
+{
+  "settings": {
+    "academyName": "Hafiz Shahid's Academy",
+    "tagline": "Learn \u2022 Practice \u2022 Grow",
+    "upiId": "JKBMERC00561189@jkb",
+    "paymentWindowMinutes": 20,
+    "heroImage": "/shahid.jpg",
+    "logo": ""
+  },
+  "users": [
+    {
+      "id": "SUPER-ADMIN-001",
+      "name": "Hafiz Shahid",
+      "phone": "+919858866415",
+      "email": "",
+      "role": "superadmin",
+      "status": "active",
+      "purchased": [],
+      "enrollments": [],
+      "progress": {},
+      "createdAt": "2026-09-06T00:00:00.000Z"
+    }
+  ],
+  "courses": [
+    {
+      "id": "english-speaking",
+      "title": "English Speaking Mastery Course",
+      "category": "English",
+      "price": 1499,
+      "oldPrice": 2499,
+      "description": "Build confidence, vocabulary, grammar and real-world speaking ability from basic to advanced.",
+      "level": "Beginner \u2192 Advanced",
+      "duration": "3 months",
+      "image": "https://images.unsplash.com/photo-1529390079861-591de354faf5?auto=format&fit=crop&w=1000&q=80",
+      "lessons": [],
+      "startDate": ""
+    },
+    {
+      "id": "tally-gst",
+      "title": "Tally with GST Complete Course",
+      "category": "Accounting",
+      "price": 1999,
+      "oldPrice": 2999,
+      "description": "Practical accounting, Tally Prime, GST, vouchers and business transactions.",
+      "level": "Basic \u2192 Advanced",
+      "duration": "4 months",
+      "image": "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=1000&q=80",
+      "lessons": [],
+      "startDate": ""
+    },
+    {
+      "id": "web-development",
+      "title": "Web Development Complete Course",
+      "category": "Technology",
+      "price": 2499,
+      "oldPrice": 3999,
+      "description": "HTML, CSS, JavaScript and responsive real-world website projects.",
+      "level": "Beginner \u2192 Project",
+      "duration": "6 months",
+      "image": "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=1000&q=80",
+      "lessons": [],
+      "startDate": ""
+    }
+  ],
+  "payments": [],
+  "applications": [],
+  "materials": [],
+  "assignments": [
+    {
+      "id": "ASG-001",
+      "courseId": "english-speaking",
+      "title": "My Dream \u2014 100 Words",
+      "description": "Write about your dream in around 100 words.",
+      "dueDate": "2026-09-20",
+      "points": 20
+    }
+  ],
+  "submissions": [],
+  "liveClasses": [
+    {
+      "id": "LIVE-001",
+      "courseId": "english-speaking",
+      "title": "English Speaking Practice \u2014 Live Class 1",
+      "date": "2026-09-12",
+      "time": "19:00",
+      "zoom": "https://zoom.us/j/example",
+      "recording": "",
+      "status": "Upcoming"
+    }
+  ],
+  "announcements": [
+    {
+      "id": "ANN-001",
+      "title": "Welcome to Hafiz Shahid's Academy",
+      "text": "Your learning journey starts here. Login with your phone, purchase a course and start learning.",
+      "createdAt": "2026-09-06"
+    }
+  ],
+  "posts": [
+    {
+      "id": "POST-001",
+      "title": "Welcome to our new learning platform",
+      "text": "Recorded classes, live Zoom sessions, assignments and study material \u2014 all in one place.",
+      "image": "/shahid.jpg",
+      "createdAt": "2026-09-06"
+    }
+  ],
+  "notifications": [],
+  "receipts": [],
+  "certificates": [],
+  "teachers": [],
+  "messageLogs": []
+}
