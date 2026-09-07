@@ -77,6 +77,7 @@ function requireAdmin(req,res,next){ const token=req.headers['x-admin-token']; i
 const adminSessions=new Set();
 const studentSessions=new Set();
 const pendingOtps=new Map();
+const pendingStudentRegistrations=new Map();
 const storage=multer.diskStorage({
  destination:(req,file,cb)=>{
    const type=req.body.uploadType||'materials';
@@ -112,14 +113,44 @@ app.post('/api/auth/verify-otp',(req,res)=>res.status(410).json({error:'Student 
 
 app.post('/api/auth/student-id',(req,res)=>{
   const d=load();
-  const matches=findStudentByName(d, req.body.name);
-  if(!matches.length) return res.status(404).json({error:'Student name not found. Please use the exact name registered by the academy.'});
-  if(matches.length>1) return res.status(409).json({error:'More than one student has this name. Please contact the academy for your Student ID.'});
-  const u=matches[0];
-  if(!/^HSA-\d{3,}$/i.test(String(u.id||''))) u.id=nextStudentId(d);
-  if(!u.studentPasswordHash) u.studentPasswordHash=hashPassword(u.id);
+  const name=String(req.body.name||'').trim().replace(/\s+/g,' ');
+  if(name.length<2) return res.status(400).json({error:'Please enter your full name.'});
+  const matches=findStudentByName(d,name);
+  if(matches.length>1) return res.status(409).json({error:'More than one student has this name. Please contact the academy.'});
+  if(matches.length===1){
+    const u=matches[0];
+    if(u.status==='deleted') return res.status(404).json({error:'This student account is no longer active.'});
+    if(!/^HSA-\d{3,}$/i.test(String(u.id||''))) { u.id=nextStudentId(d); save(d); }
+    if(!u.studentPasswordHash){
+      const token=crypto.randomBytes(32).toString('hex');
+      pendingStudentRegistrations.set(token,{userId:u.id,expiresAt:Date.now()+15*60*1000});
+      return res.json({ok:true,studentId:u.id,name:u.name,isNew:false,needsPassword:true,registrationToken:token});
+    }
+    return res.json({ok:true,studentId:u.id,name:u.name,isNew:false,needsPassword:false});
+  }
+  const idv=nextStudentId(d);
+  const u={id:idv,name,phone:'',email:'',role:'student',status:'active',purchased:[],enrollments:[],progress:{},createdAt:new Date().toISOString()};
+  d.users.push(u);
+  const token=crypto.randomBytes(32).toString('hex');
+  pendingStudentRegistrations.set(token,{userId:idv,expiresAt:Date.now()+15*60*1000});
   save(d);
-  res.json({ok:true,studentId:u.id,name:u.name});
+  res.json({ok:true,studentId:idv,name,isNew:true,needsPassword:true,registrationToken:token});
+});
+
+app.post('/api/auth/student-register-password',(req,res)=>{
+  const token=String(req.body.registrationToken||'');
+  const entry=pendingStudentRegistrations.get(token);
+  if(!entry || entry.expiresAt<Date.now()){ pendingStudentRegistrations.delete(token); return res.status(400).json({error:'Registration session expired. Please start again.'}); }
+  const password=String(req.body.password||'');
+  if(password.length<8) return res.status(400).json({error:'Password must be at least 8 characters.'});
+  const d=load();
+  const u=d.users.find(x=>x.id===entry.userId && x.role==='student');
+  if(!u) return res.status(404).json({error:'Student account could not be found.'});
+  u.studentPasswordHash=hashPassword(password);
+  u.sessionToken=crypto.randomBytes(32).toString('hex');
+  pendingStudentRegistrations.delete(token);
+  save(d);
+  res.json({ok:true,token:u.sessionToken,user:sanitizeUser(u),studentId:u.id});
 });
 
 app.post('/api/auth/student-login',(req,res)=>{

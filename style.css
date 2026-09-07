@@ -5,3 +5,12 @@
 @media(max-width:430px){.feature-strip{grid-template-columns:1fr}.hero-pills{display:grid}.course-img{height:180px}.gate-left{min-height:390px}.gate-left img{height:215px}.admin-stat-grid{grid-template-columns:1fr}.brand b{font-size:12px}}
 
 .academy-logo{width:40px;height:40px;object-fit:contain;display:block}.big-logo{width:52px;height:52px}.logo-mark{background:#fff!important;display:grid!important;place-items:center;overflow:hidden}.logo-mark img,.mark-logo{width:78%;height:78%;object-fit:contain;display:block}.mark-logo{filter:none}
+
+/* Automatic student registration */
+.student-id-card{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 18px;border:1px solid var(--line,#ddd);border-radius:16px;background:rgba(255,255,255,.06);margin-bottom:4px}
+.student-id-card span{font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.72}
+.student-id-card strong{font-size:22px;letter-spacing:.06em}
+.cert-badge{display:flex;align-items:center;justify-content:center;width:64px;height:64px;border-radius:16px;overflow:hidden}
+.cert-badge img{width:100%;height:100%;object-fit:contain}
+.mark-logo{width:30px;height:30px;object-fit:contain;display:block}
+@media(max-width:600px){.student-id-card strong{font-size:18px}}
