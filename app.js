@@ -33,6 +33,7 @@ $('studentLoginForm').addEventListener('submit',async e=>{
   e.preventDefault();
   try{
     const id=$('studentId').value, password=$('studentPassword').value, regToken=$('registrationToken').value;
+    if(password.length < 8){ toast('Please enter a valid password.'); $('studentPassword').focus(); return; }
     let j;
     if(regToken){
       const r=await fetch('/api/auth/student-register-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({registrationToken:regToken,password})});

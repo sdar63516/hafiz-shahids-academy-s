@@ -27,17 +27,17 @@
     <div class="eyebrow">SECURE STUDENT LOGIN</div>
     <h1>Welcome <span>back.</span></h1>
     <p class="lead">Enter your name. If you are new, the academy will automatically create your Student ID. Then set your password and enter your dashboard.</p>
-    <form id="nameForm" class="form">
+    <form id="nameForm" class="form" novalidate>
       <label>Your full name</label>
       <input id="studentName" autocomplete="name" placeholder="Enter your full name" required>
       <button class="primary">Continue →</button>
     </form>
-    <form id="studentLoginForm" class="form hidden">
+    <form id="studentLoginForm" class="form hidden" novalidate>
       <div class="student-id-card"><span>Your Student ID</span><strong id="studentIdDisplay">HSA-001</strong></div>
       <label id="studentPasswordLabel">Password</label>
       <input id="studentId" type="hidden">
       <input id="registrationToken" type="hidden">
-      <input id="studentPassword" type="password" autocomplete="new-password" placeholder="Create a password (8+ characters)" required>
+      <input id="studentPassword" type="password" autocomplete="new-password" placeholder="Create your password" required>
       <button class="primary" id="studentSubmitButton">Create Account & Enter →</button>
       <button type="button" class="outline" onclick="backToName()">Use another name</button>
     </form>

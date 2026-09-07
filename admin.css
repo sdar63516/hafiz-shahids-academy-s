@@ -48,3 +48,18 @@
   .admin-body .admin-stat-grid{gap:9px}
   .admin-body .table{min-width:700px}
 }
+
+/* Last-pass student/admin responsive polish */
+.admin-body .admin-section{min-width:0;overflow:hidden}
+.admin-body .split-form{width:100%;min-width:0}
+.admin-body .split-form>*{min-width:0;max-width:100%}
+@media(max-width:700px){
+  .admin-body .admin-top h1{font-size:28px;line-height:1.1}
+  .admin-body .admin-top p{line-height:1.55}
+  .admin-body .admin-section{padding:14px}
+  .admin-body .split-form{grid-template-columns:1fr}
+  .admin-body .split-form .full{grid-column:auto}
+  .admin-body .admin-course{grid-template-columns:72px 1fr;align-items:start}
+  .admin-body .admin-course img{width:72px;height:58px}
+  .admin-body .admin-course .admin-actions{grid-column:1/-1}
+}
