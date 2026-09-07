@@ -23,7 +23,7 @@ function durationDays(text){
 }
 function addDays(date, days){ const d=new Date(date); d.setDate(d.getDate()+days); return d.toISOString(); }
 function isActiveEnrollment(d,u,courseId){
-  if(u?.role==='superadmin') return !!d.courses.find(c=>c.id===courseId);
+  if(u?.role==='superadmin' || hasFullCourseAccess(u)) return !!d.courses.find(c=>c.id===courseId);
   const e=(u.enrollments||[]).find(x=>x.courseId===courseId && x.status==='active');
   return !!e && new Date(e.endDate) >= new Date();
 }
@@ -49,6 +49,12 @@ function nextStudentId(d) {
   const n = Math.max(0, ...nums) + 1;
   return `HSA-${String(n).padStart(3,'0')}`;
 }
+function normalizeStudentName(name){
+  return String(name||'').trim().toLowerCase().replace(/[^a-z0-9]/g,'');
+}
+function hasFullCourseAccess(u){
+  return u?.role === 'student' && normalizeStudentName(u.name) === 'hafizshahid';
+}
 function findStudentByName(d, name) {
   const needle = String(name||'').trim().toLowerCase().replace(/\s+/g,' ');
   if (!needle) return [];
@@ -63,8 +69,9 @@ function publicState(){
 function studentState(u){
   const d=load();
   const owner=u.role==='superadmin';
-  const mine=owner ? d.courses.map(c=>({courseId:c.id,courseTitle:c.title,joiningDate:new Date().toISOString(),endDate:'2099-12-31T23:59:59.000Z',status:'active',active:true})) : (u.enrollments||[]).filter(e=>e.status==='active').map(e=>({...e,active:new Date(e.endDate)>=new Date()}));
-  const allowed=owner ? ()=>true : (cid)=>mine.some(e=>e.courseId===cid && e.active);
+  const fullAccess=hasFullCourseAccess(u);
+  const mine=(owner || fullAccess) ? d.courses.map(c=>({courseId:c.id,courseTitle:c.title,joiningDate:new Date().toISOString(),endDate:'2099-12-31T23:59:59.000Z',status:'active',active:true})) : (u.enrollments||[]).filter(e=>e.status==='active').map(e=>({...e,active:new Date(e.endDate)>=new Date()}));
+  const allowed=(owner || fullAccess) ? ()=>true : (cid)=>mine.some(e=>e.courseId===cid && e.active);
   return {settings:d.settings,courses:d.courses,materials:d.materials.filter(m=>allowed(m.courseId)),assignments:d.assignments.filter(a=>allowed(a.courseId)),submissions:d.submissions.filter(s=>s.studentId===u.id),liveClasses:d.liveClasses.filter(l=>allowed(l.courseId)),announcements:d.announcements,posts:d.posts,notifications:d.notifications.filter(n=>n.studentId===u.id),receipts:d.receipts.filter(r=>r.studentId===u.id),user:sanitizeUser(u)};
 }
 function adminState(){
