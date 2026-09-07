@@ -11,6 +11,8 @@ services:
       - key: NODE_ENV
         value: production
       - key: SUPER_ADMIN_PHONE
-        value: 9858866415
+        sync: false
+      - key: SUPER_ADMIN_PASSWORD
+        sync: false
       - key: DATABASE_URL
         sync: false

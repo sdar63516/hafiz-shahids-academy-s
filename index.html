@@ -18,34 +18,32 @@
 <body>
     <div id="toast"></div>
     <section id="loginGate" class="gate">
-        <div class="gate-left">
-            <div class="gate-brand"><span class="mark big" id="loginBrandMark">HSA</span><b>HAFIZ
-                    SHAHID'S<br>ACADEMY</b></div><img id="loginPhoto" src="/shahid.jpg" alt="Hafiz Shahid">
-            <div class="quote">“Knowledge is the key to a better future.”</div><small>Learn • Practice • Grow</small>
-        </div>
-        <div class="gate-right">
-            <div class="eyebrow">SECURE STUDENT LOGIN</div>
-            <h1>Welcome <span>back.</span></h1>
-            <p class="lead">Login with the phone number you currently use. We’ll send a one-time OTP.</p>
-            <form id="phoneForm" class="form"><label>Country</label><select id="country">
-                    <option value="+91">India +91</option>
-                    <option value="+92">Pakistan +92</option>
-                    <option value="+1">USA/Canada +1</option>
-                    <option value="+44">UK +44</option>
-                    <option value="+971">UAE +971</option>
-                </select><label>Mobile number</label><input id="phone" inputmode="numeric" maxlength="10"
-                    placeholder="10-digit mobile number" required><button class="primary">Send OTP →</button></form>
-            <form id="otpForm" class="form hidden"><label>Enter OTP</label><input id="otp" inputmode="numeric"
-                    maxlength="6" placeholder="4-6 digit OTP" required>
-                <div id="otpDemo" class="demo-note"></div><button class="primary">Verify & Continue</button><button
-                    type="button" class="outline" onclick="resendOtp()">Resend OTP</button><button type="button"
-                    class="outline" onclick="backToPhone()">Change number</button>
-            </form>
-            <p class="small">Your account is identified by your verified phone number. A new login on another device
-                ends the previous session for that number.</p>
-            <p><a href="#" onclick="showAdminLogin();return false">Owner / Admin login</a></p>
-        </div>
-    </section>
+  <div class="gate-left">
+    <div class="gate-brand"><img class="academy-logo big-logo" src="/logo.svg" alt="Hafiz Shahid's Academy"><b>HAFIZ SHAHID'S<br>ACADEMY</b></div>
+    <img id="loginPhoto" src="/shahid.jpg" alt="Hafiz Shahid">
+    <div class="quote">“Knowledge is the key to a better future.”</div><small>Learn • Practice • Grow</small>
+  </div>
+  <div class="gate-right">
+    <div class="eyebrow">SECURE STUDENT LOGIN</div>
+    <h1>Welcome <span>back.</span></h1>
+    <p class="lead">Enter your registered name first. Your Student ID will be shown, then use your password to enter your learning dashboard.</p>
+    <form id="nameForm" class="form">
+      <label>Registered full name</label>
+      <input id="studentName" autocomplete="name" placeholder="Enter your registered name" required>
+      <button class="primary">Find My Student ID →</button>
+    </form>
+    <form id="studentLoginForm" class="form hidden">
+      <label>Student ID</label>
+      <input id="studentId" readonly>
+      <label>Password</label>
+      <input id="studentPassword" type="password" autocomplete="current-password" placeholder="Enter your password" required>
+      <button class="primary">Login to Student Dashboard →</button>
+      <button type="button" class="outline" onclick="backToName()">Use another name</button>
+    </form>
+    <p class="small">Your Student ID is unique to your academy account. Never share your password.</p>
+    <p><a href="#" onclick="showAdminLogin();return false">Owner / Admin login</a></p>
+  </div>
+</section>
     <section id="app" class="hidden">
         <header class="topbar"><a class="brand" href="#" onclick="go('home');return false"><span class="mark"
                     id="brandMark">HSA</span><span>Hafiz Shahid's<br><b>Academy</b></span></a><button

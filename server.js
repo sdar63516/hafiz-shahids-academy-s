@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const crypto = require('crypto');
-const { initStore, load, save, flush } = require('./db');
+const { initStore, load, save, flush, passwordHash } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -29,9 +29,33 @@ function isActiveEnrollment(d,u,courseId){
 }
 function sanitizeUser(u){
   if(!u) return null;
-  const {password,otp,...safe}=u;
+  const {password,otp,passwordHash:_,studentPasswordHash:__,...safe}=u;
   return safe;
 }
+function hashPassword(password) {
+  return passwordHash(String(password));
+}
+function verifyPassword(password, stored) {
+  if (!stored || !String(stored).includes(':')) return false;
+  const [salt, hex] = String(stored).split(':');
+  try {
+    const actual = crypto.scryptSync(String(password), salt, 64);
+    const expected = Buffer.from(hex, 'hex');
+    return expected.length === actual.length && crypto.timingSafeEqual(actual, expected);
+  } catch { return false; }
+}
+function nextStudentId(d) {
+  const nums = d.users.map(u => String(u.id||'').match(/^HSA-(\d{3,})$/i)).filter(Boolean).map(m => Number(m[1]));
+  const n = Math.max(0, ...nums) + 1;
+  return `HSA-${String(n).padStart(3,'0')}`;
+}
+function findStudentByName(d, name) {
+  const needle = String(name||'').trim().toLowerCase().replace(/\s+/g,' ');
+  if (!needle) return [];
+  return d.users.filter(u => u.role === 'student' && u.status !== 'deleted' &&
+    String(u.name||'').trim().toLowerCase().replace(/\s+/g,' ') === needle);
+}
+
 function publicState(){
   const d=load();
   return {settings:d.settings,courses:d.courses,posts:d.posts,announcements:d.announcements};
@@ -82,44 +106,44 @@ function demoStudentOtp(d, key){
 function validOtpFormat(otp){ return /^\\d{4,6}$/.test(String(otp)); }
 
 // Phone OTP. Demo intentionally returns the OTP in the response so the project can be tested without a paid SMS gateway.
-app.post('/api/auth/request-otp',(req,res)=>{
-  const country=String(req.body.country||'+91');
-  const phone=String(req.body.phone||'').replace(/\D/g,'');
-  if(phone.length!==10)return res.status(400).json({error:'Enter a valid 10-digit mobile number.'});
-  const key=country+phone;
+// Legacy OTP endpoints are kept only for old clients; the new student login uses name -> ID -> password.
+app.post('/api/auth/request-otp',(req,res)=>res.status(410).json({error:'Student OTP login has been replaced. Please login with your name, student ID and password.'}));
+app.post('/api/auth/verify-otp',(req,res)=>res.status(410).json({error:'Student OTP login has been replaced. Please login with your name, student ID and password.'}));
+
+app.post('/api/auth/student-id',(req,res)=>{
   const d=load();
-  const otp=demoStudentOtp(d,key);
-  pendingOtps.set(key,{otp,expires:Date.now()+15*60*1000,attempts:0,requestedAt:Date.now()});
-  res.json({ok:true,message:'Demo OTP generated. A real SMS gateway is required for private OTP delivery.',demoOtp:otp,expiresIn:900});
+  const matches=findStudentByName(d, req.body.name);
+  if(!matches.length) return res.status(404).json({error:'Student name not found. Please use the exact name registered by the academy.'});
+  if(matches.length>1) return res.status(409).json({error:'More than one student has this name. Please contact the academy for your Student ID.'});
+  const u=matches[0];
+  if(!/^HSA-\d{3,}$/i.test(String(u.id||''))) u.id=nextStudentId(d);
+  if(!u.studentPasswordHash) u.studentPasswordHash=hashPassword(u.id);
+  save(d);
+  res.json({ok:true,studentId:u.id,name:u.name});
 });
-app.post('/api/auth/verify-otp',(req,res)=>{
-  const country=String(req.body.country||'+91');
-  const phone=String(req.body.phone||'').replace(/\D/g,'');
-  const otp=String(req.body.otp||'').trim();
-  const key=country+phone; const p=pendingOtps.get(key);
-  if(!validOtpFormat(otp))return res.status(400).json({error:'Enter a 4-6 digit OTP.'});
-  if(!p||Date.now()>p.expires)return res.status(401).json({error:'OTP expired. Request a new OTP.'});
-  p.attempts++; if(p.attempts>5)return res.status(429).json({error:'Too many OTP attempts.'});
-  if(otp!==p.otp)return res.status(401).json({error:'Invalid OTP.'});
-  pendingOtps.delete(key);
+
+app.post('/api/auth/student-login',(req,res)=>{
   const d=load();
-  const OWNER_PHONE='+91'+String(process.env.SUPER_ADMIN_PHONE||'9858866415').replace(/\D/g,'');
-  let u=d.users.find(x=>x.phone===key);
-  if(key===OWNER_PHONE){
-    if(!u){u={id:'SUPER-ADMIN-001',name:'Hafiz Shahid',phone:key,email:'',role:'superadmin',status:'active',purchased:[],enrollments:[],progress:{},createdAt:new Date().toISOString()};d.users.push(u);} else {u.role='superadmin';u.status='active';}
-    u.enrollments=d.courses.map(c=>({courseId:c.id,courseTitle:c.title,joiningDate:new Date().toISOString(),endDate:'2099-12-31T23:59:59.000Z',status:'active',paymentId:'SUPER-ADMIN'}));
-    u.purchased=d.courses.map(c=>c.id);
-    u.sessionToken=crypto.randomBytes(24).toString('hex');
-    save(d); return res.json({ok:true,token:u.sessionToken,user:sanitizeUser(u),superAdmin:true});
-  }
-  if(!u){
-    u={id:id('STU'),name:'New Student',phone:key,email:'',role:'student',status:'pending',purchased:[],enrollments:[],progress:{},demoOtp:p.otp,createdAt:new Date().toISOString()};
-    d.users.push(u);
-  }
-  // One active session per phone/account. A fresh login invalidates the old device session.
-  u.sessionToken=crypto.randomBytes(24).toString('hex');
+  const studentId=String(req.body.studentId||'').trim().toUpperCase();
+  const password=String(req.body.password||'');
+  if(!/^HSA-\d{3,}$/.test(studentId)) return res.status(400).json({error:'Enter a valid Student ID, e.g. HSA-001.'});
+  if(!password) return res.status(400).json({error:'Password is required.'});
+  const u=d.users.find(x=>x.role==='student' && String(x.id||'').toUpperCase()===studentId);
+  if(!u) return res.status(401).json({error:'Student ID or password is incorrect.'});
+  if(!verifyPassword(password,u.studentPasswordHash)) return res.status(401).json({error:'Student ID or password is incorrect.'});
+  u.sessionToken=crypto.randomBytes(32).toString('hex');
   save(d);
   res.json({ok:true,token:u.sessionToken,user:sanitizeUser(u)});
+});
+
+app.post('/api/auth/change-password',requireStudent,(req,res)=>{
+  const d=load(),u=d.users.find(x=>x.id===req.user.id);
+  const current=String(req.body.currentPassword||''), next=String(req.body.newPassword||'');
+  if(!verifyPassword(current,u.studentPasswordHash)) return res.status(401).json({error:'Current password is incorrect.'});
+  if(next.length<8) return res.status(400).json({error:'New password must be at least 8 characters.'});
+  u.studentPasswordHash=hashPassword(next);
+  save(d);
+  res.json({ok:true,message:'Password changed successfully.'});
 });
 
 app.post('/api/auth/profile',requireStudent,upload.single('profile'),(req,res)=>{
@@ -155,21 +179,55 @@ app.post('/api/payment',requireStudent,upload.single('screenshot'),(req,res)=>{
 
 app.get('/api/admin/check',requireAdmin,(req,res)=>res.json({ok:true}));
 
-app.post('/api/admin/request-otp',(req,res)=>{
-  const phone=String(req.body.phone||'').replace(/\D/g,'');
-  if(phone!==String(process.env.SUPER_ADMIN_PHONE||'9858866415').replace(/\D/g,''))return res.status(403).json({error:'Only the Super Admin phone can use this login.'});
-  const d=load(); const key='+91'+phone,otp='123456'; pendingOtps.set('ADMIN:'+key,{otp,expires:Date.now()+15*60*1000,attempts:0});
-  res.json({ok:true,demoOtp:otp,academy:d.settings?.academyName||"Hafiz Shahid's Academy",expiresIn:900});
-});
-app.post('/api/admin/verify-otp',(req,res)=>{
-  const phone=String(req.body.phone||'').replace(/\D/g,''); const otp=String(req.body.otp||'').trim(); const key='+91'+phone; const p=pendingOtps.get('ADMIN:'+key); if(!validOtpFormat(otp))return res.status(400).json({error:'Enter a valid OTP.'});
-  if(phone!==String(process.env.SUPER_ADMIN_PHONE||'9858866415').replace(/\D/g,''))return res.status(403).json({error:'Only the Super Admin phone can use this login.'});
-  if(!p||Date.now()>p.expires)return res.status(401).json({error:'OTP expired. Request a new OTP.'}); if(otp!==p.otp)return res.status(401).json({error:'Invalid OTP.'}); pendingOtps.delete('ADMIN:'+key);
-  const d=load(); let u=d.users.find(x=>x.phone===key); if(!u){u={id:'SUPER-ADMIN-001',name:'Hafiz Shahid',phone:key,email:'',role:'superadmin',status:'active',enrollments:[],purchased:[],progress:{},createdAt:new Date().toISOString()};d.users.push(u);} u.role='superadmin';u.status='active';u.enrollments=d.courses.map(c=>({courseId:c.id,courseTitle:c.title,joiningDate:new Date().toISOString(),endDate:'2099-12-31T23:59:59.000Z',status:'active',paymentId:'SUPER-ADMIN'}));u.purchased=d.courses.map(c=>c.id);
-  const token=crypto.randomBytes(32).toString('hex'); adminSessions.add(token); u.adminSessionIssuedAt=new Date().toISOString(); save(d); res.json({ok:true,token,admin:sanitizeUser(u),superAdmin:true});
+app.post('/api/admin/request-otp',(req,res)=>res.status(410).json({error:'Super Admin OTP login has been replaced by secure password login.'}));
+app.post('/api/admin/verify-otp',(req,res)=>res.status(410).json({error:'Super Admin OTP login has been replaced by secure password login.'}));
+
+app.post('/api/admin/login',(req,res)=>{
+  const password=String(req.body.password||'');
+  const configured=process.env.SUPER_ADMIN_PASSWORD;
+  if(!configured) return res.status(500).json({error:'Super Admin password is not configured on Render. Add SUPER_ADMIN_PASSWORD in Environment Variables.'});
+  if(!password || password.length!==configured.length || !crypto.timingSafeEqual(Buffer.from(password),Buffer.from(configured))) return res.status(401).json({error:'Incorrect admin password.'});
+  const d=load();
+  const ownerPhone='+91'+String(process.env.SUPER_ADMIN_PHONE||'').replace(/\D/g,'');
+  let u=d.users.find(x=>x.role==='superadmin');
+  if(!u){
+    u={id:'SUPER-ADMIN-001',name:"Hafiz Shahid",phone:ownerPhone,email:'',role:'superadmin',status:'active',enrollments:[],purchased:[],progress:{},createdAt:new Date().toISOString()};
+    d.users.push(u);
+  }
+  u.role='superadmin'; u.status='active';
+  u.enrollments=d.courses.map(c=>({courseId:c.id,courseTitle:c.title,joiningDate:new Date().toISOString(),endDate:'2099-12-31T23:59:59.000Z',status:'active',paymentId:'SUPER-ADMIN'}));
+  u.purchased=d.courses.map(c=>c.id);
+  const token=crypto.randomBytes(32).toString('hex');
+  adminSessions.add(token);
+  save(d);
+  res.json({ok:true,token,admin:sanitizeUser(u),superAdmin:true});
 });
 
-app.post('/api/admin/login',(req,res)=>res.status(410).json({error:'Password admin login is disabled. Use the Super Admin phone OTP.'}));
+app.post('/api/admin/student',requireAdmin,(req,res)=>{
+  const d=load();
+  const name=String(req.body.name||'').trim();
+  const password=String(req.body.password||'');
+  const phone=String(req.body.phone||'').replace(/\D/g,'');
+  const email=String(req.body.email||'').trim();
+  if(name.length<2)return res.status(400).json({error:'Student name is required.'});
+  if(password.length<8)return res.status(400).json({error:'Student password must be at least 8 characters.'});
+  if(phone && phone.length!==10)return res.status(400).json({error:'Phone number must contain 10 digits.'});
+  const idv=nextStudentId(d);
+  const u={id:idv,name,phone:phone?'+91'+phone:'',email,role:'student',status:'active',purchased:[],enrollments:[],progress:{},studentPasswordHash:hashPassword(password),createdAt:new Date().toISOString()};
+  d.users.push(u); save(d);
+  res.json({ok:true,user:sanitizeUser(u)});
+});
+
+app.post('/api/admin/student/:id/password',requireAdmin,(req,res)=>{
+  const d=load(),u=d.users.find(x=>x.id===req.params.id && x.role==='student');
+  const next=String(req.body.password||'');
+  if(!u)return res.status(404).json({error:'Student not found.'});
+  if(next.length<8)return res.status(400).json({error:'Student password must be at least 8 characters.'});
+  u.studentPasswordHash=hashPassword(next);
+  save(d);
+  res.json({ok:true,message:'Student password updated.'});
+});
+
 app.get('/api/admin-state',requireAdmin,(req,res)=>res.json(adminState()));
 
 app.post('/api/admin/payment/:id/approve',requireAdmin,(req,res)=>{
