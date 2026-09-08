@@ -55,6 +55,13 @@ function normalizeStudentName(name){
 function hasFullCourseAccess(u){
   return u?.role === 'student' && normalizeStudentName(u.name) === 'hafizshahid';
 }
+function sameStudentName(a,b){ return normalizeStudentName(a)===normalizeStudentName(b); }
+function removeUploadFile(url){
+  if(!url || typeof url!=='string' || !url.startsWith('/uploads/')) return;
+  const rel=url.replace(/^\/uploads\//,'');
+  const target=path.resolve(UPLOAD_ROOT,rel);
+  if(target.startsWith(path.resolve(UPLOAD_ROOT)+path.sep)) { try{ if(fs.existsSync(target)) fs.unlinkSync(target); }catch{} }
+}
 function findStudentByName(d, name) {
   const needle = String(name||'').trim().toLowerCase().replace(/\s+/g,' ');
   if (!needle) return [];
@@ -87,7 +94,8 @@ const pendingOtps=new Map();
 const pendingStudentRegistrations=new Map();
 const storage=multer.diskStorage({
  destination:(req,file,cb)=>{
-   const type=req.body.uploadType||'materials';
+   let type=req.body.uploadType||'materials';
+   if(file.fieldname==='syllabusFile') type='materials';
    cb(null,path.join(UPLOAD_ROOT,['videos','materials','assignments','payments','profiles','covers','branding'].includes(type)?type:'materials'));
  },
  filename:(req,file,cb)=>cb(null,`${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${path.basename(file.originalname).replace(/[^a-zA-Z0-9._-]/g,'_')}`)
@@ -95,6 +103,7 @@ const storage=multer.diskStorage({
 const upload=multer({storage,limits:{fileSize:100*1024*1024}});
 app.use(express.json({limit:'8mb'}));
 app.use(express.urlencoded({extended:true}));
+app.use('/uploads', express.static(UPLOAD_ROOT, {fallthrough:false, maxAge:'1h'}));
 app.use(express.static(ROOT));
 
 app.get('/api/public-state',(req,res)=>res.json(publicState()));
@@ -131,19 +140,24 @@ app.post('/api/auth/student-id',(req,res)=>{
     if(!u.studentPasswordHash){
       const token=crypto.randomBytes(32).toString('hex');
       pendingStudentRegistrations.set(token,{userId:u.id,expiresAt:Date.now()+15*60*1000});
-      return res.json({ok:true,studentId:u.id,name:u.name,isNew:false,needsPassword:true,registrationToken:token});
+      return res.json({ok:true,studentId:u.id,name:u.name,isNew:false,needsPassword:true,registrationToken:token,existing:true});
     }
-    return res.json({ok:true,studentId:u.id,name:u.name,isNew:false,needsPassword:false});
+    return res.json({ok:true,studentId:u.id,name:u.name,isNew:false,needsPassword:false,existing:true});
+  }
+  // A short-lived in-memory lock prevents two simultaneous clicks from creating two accounts for the same name.
+  const key=normalizeStudentName(name);
+  const pending=[...pendingStudentRegistrations.values()].find(x=>x.nameKey===key && x.expiresAt>Date.now());
+  if(pending){
+    return res.json({ok:true,studentId:pending.studentId,name:pending.name,isNew:false,needsPassword:true,registrationToken:pending.token,existing:true});
   }
   const idv=nextStudentId(d);
   const u={id:idv,name,phone:'',email:'',role:'student',status:'active',purchased:[],enrollments:[],progress:{},createdAt:new Date().toISOString()};
   d.users.push(u);
   const token=crypto.randomBytes(32).toString('hex');
-  pendingStudentRegistrations.set(token,{userId:idv,expiresAt:Date.now()+15*60*1000});
+  pendingStudentRegistrations.set(token,{userId:idv,studentId:idv,name, nameKey:key, token,expiresAt:Date.now()+15*60*1000});
   save(d);
-  res.json({ok:true,studentId:idv,name,isNew:true,needsPassword:true,registrationToken:token});
+  res.json({ok:true,studentId:idv,name,isNew:true,needsPassword:true,registrationToken:token,existing:false});
 });
-
 app.post('/api/auth/student-register-password',(req,res)=>{
   const token=String(req.body.registrationToken||'');
   const entry=pendingStudentRegistrations.get(token);
@@ -243,19 +257,21 @@ app.post('/api/admin/login',(req,res)=>{
 
 app.post('/api/admin/student',requireAdmin,(req,res)=>{
   const d=load();
-  const name=String(req.body.name||'').trim();
-  const password=String(req.body.password||'');
-  const phone=String(req.body.phone||'').replace(/\D/g,'');
-  const email=String(req.body.email||'').trim();
-  if(name.length<2)return res.status(400).json({error:'Student name is required.'});
-  if(password.length<8)return res.status(400).json({error:'Student password must be at least 8 characters.'});
-  if(phone && phone.length!==10)return res.status(400).json({error:'Phone number must contain 10 digits.'});
-  const idv=nextStudentId(d);
-  const u={id:idv,name,phone:phone?'+91'+phone:'',email,role:'student',status:'active',purchased:[],enrollments:[],progress:{},studentPasswordHash:hashPassword(password),createdAt:new Date().toISOString()};
-  d.users.push(u); save(d);
-  res.json({ok:true,user:sanitizeUser(u)});
+  const name=String(req.body.name||'').trim().replace(/\s+/g,' ');
+  if(!name)return res.status(400).json({error:'Student name is required.'});
+  if(String(req.body.password||'').length<8)return res.status(400).json({error:'Password must be at least 8 characters.'});
+  const existing=findStudentByName(d,name)[0];
+  if(existing){
+    existing.phone=cleanPhone(req.body.country,req.body.phone)||existing.phone;
+    existing.email=String(req.body.email||'').trim()||existing.email;
+    existing.studentPasswordHash=hashPassword(req.body.password);
+    existing.status='active';
+    save(d);
+    return res.json({ok:true,user:sanitizeUser(existing),existing:true});
+  }
+  const u={id:nextStudentId(d),name,phone:cleanPhone(req.body.country,req.body.phone),email:String(req.body.email||'').trim(),role:'student',status:'active',purchased:[],enrollments:[],progress:{},studentPasswordHash:hashPassword(req.body.password),createdAt:new Date().toISOString()};
+  d.users.push(u);save(d);res.json({ok:true,user:sanitizeUser(u),existing:false});
 });
-
 app.post('/api/admin/student/:id/delete',requireAdmin,(req,res)=>{
   const d=load();
   const u=d.users.find(x=>x.id===req.params.id && x.role==='student');
@@ -283,7 +299,7 @@ app.post('/api/admin/payment/:id/approve',requireAdmin,(req,res)=>{
   const d=load(),p=d.payments.find(x=>x.id===req.params.id); if(!p)return res.status(404).json({error:'Payment not found'});
   if(p.status==='Approved')return res.json({ok:true});
   const u=d.users.find(x=>x.id===p.studentId),c=d.courses.find(x=>x.id===p.courseId); if(!u||!c)return res.status(404).json({error:'Student/course missing'});
-  const start=new Date(); const end=new Date(addDays(start,durationDays(c.duration)));
+  const start=new Date(); const end=new Date(addDays(start,durationDays(c.validity||c.duration)));
   u.status='active'; u.enrollments=u.enrollments||[];
   const existing=u.enrollments.find(e=>e.courseId===c.id);
   const enrollment={courseId:c.id,courseTitle:c.title,joiningDate:start.toISOString(),endDate:end.toISOString(),status:'active',paymentId:p.id,amount:p.amount};
@@ -304,26 +320,51 @@ app.post('/api/admin/teacher',requireAdmin,upload.single('photo'),(req,res)=>{co
 app.post('/api/admin/teacher/:id/delete',requireAdmin,(req,res)=>{const d=load();d.teachers=d.teachers.filter(t=>t.id!==req.params.id);save(d);res.json({ok:true});});
 app.post('/api/admin/message-log',requireAdmin,(req,res)=>{const d=load();const item={id:id('MSG'),channel:req.body.channel||'whatsapp',audience:req.body.audience||'individual',studentIds:Array.isArray(req.body.studentIds)?req.body.studentIds:[],subject:req.body.subject||'',message:req.body.message||'',createdAt:new Date().toISOString()};d.messageLogs.unshift(item);save(d);res.json({ok:true,message:item});});
 
-app.post('/api/admin/course',requireAdmin,upload.single('cover'),(req,res)=>{
-  const d=load(); const c={id:id('COURSE'),title:req.body.title,category:req.body.category||'General',price:Number(req.body.price||0),oldPrice:Number(req.body.oldPrice||0),description:req.body.description||'',level:req.body.level||'All Levels',duration:req.body.duration||'30 days',image:req.file?'/uploads/covers/'+req.file.filename:(req.body.image||''),startDate:req.body.startDate||'',lessons:[],createdAt:new Date().toISOString()}; d.courses.push(c); save(d); res.json({ok:true,course:c});
+app.post('/api/admin/course',requireAdmin,upload.fields([{name:'cover',maxCount:1},{name:'syllabusFile',maxCount:1}]),(req,res)=>{
+  const d=load(); const c={id:id('COURSE'),title:req.body.title,category:req.body.category||'General',price:Number(req.body.price||0),oldPrice:Number(req.body.oldPrice||0),description:req.body.description||'',level:req.body.level||'All Levels',duration:req.body.duration||'30 days',validity:req.body.validity||req.body.duration||'30 days',image:req.files?.cover?.[0]?'/uploads/covers/'+req.files.cover[0].filename:(req.body.image||''),syllabusUrl:req.files?.syllabusFile?.[0]?'/uploads/materials/'+req.files.syllabusFile[0].filename:(req.body.syllabusUrl||''),startDate:req.body.startDate||'',lessons:[],createdAt:new Date().toISOString()}; d.courses.push(c); save(d); res.json({ok:true,course:c});
 });
-app.post('/api/admin/course/:id/edit',requireAdmin,upload.single('cover'),(req,res)=>{const d=load(),c=d.courses.find(x=>x.id===req.params.id);if(!c)return res.status(404).json({error:'Course not found'});for(const k of ['title','category','description','level','duration','startDate'])if(req.body[k]!==undefined)c[k]=req.body[k];if(req.body.price!==undefined)c.price=Number(req.body.price);if(req.body.oldPrice!==undefined)c.oldPrice=Number(req.body.oldPrice);if(req.file)c.image='/uploads/covers/'+req.file.filename;else if(req.body.image)c.image=req.body.image;save(d);res.json({ok:true,course:c});});
+app.post('/api/admin/course/:id/edit',requireAdmin,upload.fields([{name:'cover',maxCount:1},{name:'syllabusFile',maxCount:1}]),(req,res)=>{const d=load(),c=d.courses.find(x=>x.id===req.params.id);if(!c)return res.status(404).json({error:'Course not found'});for(const k of ['title','category','description','level','duration','startDate'])if(req.body[k]!==undefined)c[k]=req.body[k];if(req.body.price!==undefined)c.price=Number(req.body.price);if(req.body.oldPrice!==undefined)c.oldPrice=Number(req.body.oldPrice);if(req.body.validity!==undefined)c.validity=req.body.validity;if(req.body.syllabusUrl!==undefined)c.syllabusUrl=req.body.syllabusUrl;if(req.files?.cover?.[0])c.image='/uploads/covers/'+req.files.cover[0].filename;else if(req.body.image)c.image=req.body.image;if(req.files?.syllabusFile?.[0])c.syllabusUrl='/uploads/materials/'+req.files.syllabusFile[0].filename;else if(req.body.syllabusUrl!==undefined)c.syllabusUrl=req.body.syllabusUrl;save(d);res.json({ok:true,course:c});});
 app.post('/api/admin/course/:id/delete',requireAdmin,(req,res)=>{const d=load();d.courses=d.courses.filter(c=>c.id!==req.params.id);save(d);res.json({ok:true});});
 
-app.post('/api/admin/lesson',requireAdmin,upload.single('file'),(req,res)=>{const d=load(),c=d.courses.find(x=>x.id===req.body.courseId);if(!c)return res.status(404).json({error:'Course not found'});let type=req.body.type||'youtube',video=req.body.video||'';if(req.file){type='upload';video='/uploads/videos/'+req.file.filename;}const l={id:id('LESSON'),title:req.body.title,type,video,free:req.body.free==='true',description:req.body.description||'',createdAt:new Date().toISOString()};c.lessons=c.lessons||[];c.lessons.push(l);d.notifications.push(...d.users.filter(u=>u.role==='student'&&isActiveEnrollment(d,u,c.id)).map(u=>({id:id('NOT'),studentId:u.id,type:'class',title:'New recorded class',text:`A new class “${l.title}” was added to ${c.title}.`,createdAt:new Date().toISOString(),channel:'in-app'})));save(d);res.json({ok:true,lesson:l});});
-app.post('/api/admin/material',requireAdmin,upload.single('file'),(req,res)=>{const d=load();if(!req.file)return res.status(400).json({error:'File required'});const m={id:id('MAT'),courseId:req.body.courseId,title:req.body.title,file:'/uploads/materials/'+req.file.filename,originalName:req.file.originalname,size:req.file.size,createdAt:new Date().toISOString()};d.materials.unshift(m);d.notifications.push(...d.users.filter(u=>u.role==='student'&&isActiveEnrollment(d,u,m.courseId)).map(u=>({id:id('NOT'),studentId:u.id,type:'material',title:'New study material',text:`New study material “${m.title}” is available.`,createdAt:new Date().toISOString()})));save(d);res.json({ok:true,material:m});});
-app.post('/api/admin/assignment',requireAdmin,(req,res)=>{const d=load();const a={id:id('ASG'),courseId:req.body.courseId,title:req.body.title,description:req.body.description||'',dueDate:req.body.dueDate||'',points:Number(req.body.points||10)};d.assignments.unshift(a);save(d);res.json({ok:true,assignment:a});});
+app.post('/api/admin/lesson',requireAdmin,upload.single('file'),(req,res)=>{
+ const d=load(),c=d.courses.find(x=>x.id===req.body.courseId);if(!c)return res.status(404).json({error:'Course not found'});
+ let type=req.body.type||'youtube',video=req.body.video||'';if(req.file){type='upload';video='/uploads/videos/'+req.file.filename;}
+ const l={id:id('LESSON'),title:String(req.body.title||'').trim(),type,video,free:req.body.free==='true'||req.body.free===true,description:req.body.description||'',createdAt:new Date().toISOString()};
+ if(!l.title)return res.status(400).json({error:'Lesson title is required.'}); c.lessons=c.lessons||[];c.lessons.push(l);save(d);res.json({ok:true,lesson:l});
+});
+app.post('/api/admin/lesson/:id/edit',requireAdmin,upload.single('file'),(req,res)=>{
+ const d=load();let found=null;for(const c of d.courses){const l=(c.lessons||[]).find(x=>x.id===req.params.id);if(l){found={c,l};break;}}
+ if(!found)return res.status(404).json({error:'Lesson not found'});const {c,l}=found;
+ if(req.body.title!==undefined)l.title=String(req.body.title).trim();if(req.body.description!==undefined)l.description=req.body.description;if(req.body.free!==undefined)l.free=req.body.free==='true'||req.body.free===true;
+ if(req.file){removeUploadFile(l.video);l.type='upload';l.video='/uploads/videos/'+req.file.filename;}else if(req.body.video!==undefined&&req.body.video){l.type='youtube';l.video=req.body.video;}
+ save(d);res.json({ok:true,lesson:l});
+});
+app.post('/api/admin/lesson/:id/delete',requireAdmin,(req,res)=>{const d=load();for(const c of d.courses){const idx=(c.lessons||[]).findIndex(x=>x.id===req.params.id);if(idx>=0){const l=c.lessons[idx];removeUploadFile(l.video);c.lessons.splice(idx,1);save(d);return res.json({ok:true});}}res.status(404).json({error:'Lesson not found'});});
+app.post('/api/admin/material',requireAdmin,upload.single('file'),(req,res)=>{const d=load();if(!req.file)return res.status(400).json({error:'File required'});const m={id:id('MAT'),courseId:req.body.courseId,title:req.body.title,file:'/uploads/materials/'+req.file.filename,originalName:req.file.originalname,size:req.file.size,createdAt:new Date().toISOString()};d.materials.unshift(m);save(d);res.json({ok:true,material:m});});
+app.post('/api/admin/material/:id/edit',requireAdmin,upload.single('file'),(req,res)=>{const d=load(),m=d.materials.find(x=>x.id===req.params.id);if(!m)return res.status(404).json({error:'Material not found'});if(req.body.title!==undefined)m.title=req.body.title;if(req.body.courseId!==undefined)m.courseId=req.body.courseId;if(req.file){removeUploadFile(m.file);m.file='/uploads/materials/'+req.file.filename;m.originalName=req.file.originalname;m.size=req.file.size;}save(d);res.json({ok:true,material:m});});
+app.post('/api/admin/material/:id/delete',requireAdmin,(req,res)=>{const d=load(),i=d.materials.findIndex(x=>x.id===req.params.id);if(i<0)return res.status(404).json({error:'Material not found'});removeUploadFile(d.materials[i].file);d.materials.splice(i,1);save(d);res.json({ok:true});});
+app.post('/api/admin/assignment',requireAdmin,(req,res)=>{const d=load();const a={id:id('ASG'),courseId:req.body.courseId,title:String(req.body.title||'').trim(),description:req.body.description||'',dueDate:req.body.dueDate||'',points:Number(req.body.points||10)};if(!a.title)return res.status(400).json({error:'Assignment title is required.'});d.assignments.unshift(a);save(d);res.json({ok:true,assignment:a});});
+app.post('/api/admin/assignment/:id/edit',requireAdmin,(req,res)=>{const d=load(),a=d.assignments.find(x=>x.id===req.params.id);if(!a)return res.status(404).json({error:'Assignment not found'});for(const k of ['courseId','title','description','dueDate'])if(req.body[k]!==undefined)a[k]=req.body[k];if(req.body.points!==undefined)a.points=Number(req.body.points);save(d);res.json({ok:true,assignment:a});});
+app.post('/api/admin/assignment/:id/delete',requireAdmin,(req,res)=>{const d=load(),i=d.assignments.findIndex(x=>x.id===req.params.id);if(i<0)return res.status(404).json({error:'Assignment not found'});d.assignments.splice(i,1);d.submissions=d.submissions.filter(s=>s.assignmentId!==req.params.id);save(d);res.json({ok:true});});
 app.post('/api/assignment/submit',requireStudent,upload.single('file'),(req,res)=>{const d=load(),a=d.assignments.find(x=>x.id===req.body.assignmentId);if(!a)return res.status(404).json({error:'Assignment not found'});if(!isActiveEnrollment(d,req.user,a.courseId))return res.status(403).json({error:'Course access is inactive.'});const old=d.submissions.find(x=>x.assignmentId===a.id&&x.studentId===req.user.id);const item={id:old?old.id:id('SUB'),assignmentId:a.id,studentId:req.user.id,answer:req.body.answer||'',file:req.file?'/uploads/assignments/'+req.file.filename:(old?.file||''),status:'Submitted',submittedAt:new Date().toISOString(),score:null,feedback:''};if(old)Object.assign(old,item);else d.submissions.push(item);save(d);res.json({ok:true,submission:item});});
 app.post('/api/admin/submission/:id/grade',requireAdmin,(req,res)=>{const d=load(),s=d.submissions.find(x=>x.id===req.params.id);if(!s)return res.status(404).json({error:'Submission not found'});s.score=Number(req.body.score||0);s.feedback=req.body.feedback||'';s.status='Graded';d.notifications.unshift({id:id('NOT'),studentId:s.studentId,type:'assignment',title:'Assignment graded',text:`Your assignment has been graded: ${s.score} points.`,createdAt:new Date().toISOString()});save(d);res.json({ok:true});});
-app.post('/api/admin/live',requireAdmin,(req,res)=>{const d=load();const l={id:id('LIVE'),courseId:req.body.courseId,title:req.body.title,date:req.body.date,time:req.body.time,zoom:req.body.zoom,recording:req.body.recording||'',status:'Upcoming'};d.liveClasses.unshift(l);d.notifications.push(...d.users.filter(u=>u.role==='student'&&isActiveEnrollment(d,u,l.courseId)).map(u=>({id:id('NOT'),studentId:u.id,type:'live',title:'New live class scheduled',text:`${l.title} is scheduled for ${l.date} at ${l.time}.`,createdAt:new Date().toISOString()})));save(d);res.json({ok:true,live:l});});
+app.post('/api/admin/live',requireAdmin,(req,res)=>{const d=load();const l={id:id('LIVE'),courseId:req.body.courseId,title:req.body.title,date:req.body.date,time:req.body.time,zoom:req.body.zoom,recording:req.body.recording||'',status:'Upcoming'};d.liveClasses.unshift(l);save(d);res.json({ok:true,live:l});});
+app.post('/api/admin/live/:id/edit',requireAdmin,(req,res)=>{const d=load(),l=d.liveClasses.find(x=>x.id===req.params.id);if(!l)return res.status(404).json({error:'Live class not found'});for(const k of ['courseId','title','date','time','zoom','recording','status'])if(req.body[k]!==undefined)l[k]=req.body[k];save(d);res.json({ok:true,live:l});});
+app.post('/api/admin/live/:id/delete',requireAdmin,(req,res)=>{const d=load(),i=d.liveClasses.findIndex(x=>x.id===req.params.id);if(i<0)return res.status(404).json({error:'Live class not found'});d.liveClasses.splice(i,1);save(d);res.json({ok:true});});
 app.post('/api/admin/announcement',requireAdmin,(req,res)=>{const d=load();const a={id:id('ANN'),title:req.body.title,text:req.body.text,createdAt:new Date().toISOString()};d.announcements.unshift(a);save(d);res.json({ok:true,announcement:a});});
 app.post('/api/admin/post',requireAdmin,upload.single('imageFile'),(req,res)=>{const d=load();const p={id:id('POST'),title:req.body.title,text:req.body.text||'',image:req.file?'/uploads/materials/'+req.file.filename:(req.body.image||''),createdAt:new Date().toISOString()};d.posts.unshift(p);save(d);res.json({ok:true,post:p});});
+app.post('/api/admin/post/:id/edit',requireAdmin,upload.single('imageFile'),(req,res)=>{const d=load(),p=d.posts.find(x=>x.id===req.params.id);if(!p)return res.status(404).json({error:'Post not found'});if(req.body.title!==undefined)p.title=req.body.title;if(req.body.text!==undefined)p.text=req.body.text;if(req.file){removeUploadFile(p.image);p.image='/uploads/materials/'+req.file.filename;}else if(req.body.image!==undefined)p.image=req.body.image;save(d);res.json({ok:true,post:p});});
+app.post('/api/admin/post/:id/delete',requireAdmin,(req,res)=>{const d=load(),i=d.posts.findIndex(x=>x.id===req.params.id);if(i<0)return res.status(404).json({error:'Post not found'});removeUploadFile(d.posts[i].image);d.posts.splice(i,1);save(d);res.json({ok:true});});
 app.post('/api/admin/branding',requireAdmin,upload.fields([{name:'hero',maxCount:1},{name:'logo',maxCount:1}]),(req,res)=>{const d=load();d.settings=d.settings||{};for(const [field,files] of Object.entries(req.files||{})){if(files[0])d.settings[field==='hero'?'heroImage':'logo']='/uploads/branding/'+files[0].filename;}if(req.body.academyName)d.settings.academyName=req.body.academyName;if(req.body.tagline)d.settings.tagline=req.body.tagline;save(d);res.json({ok:true,settings:d.settings});});
 app.post('/api/admin/settings',requireAdmin,(req,res)=>{const d=load();d.settings={...d.settings,...req.body};save(d);res.json({ok:true,settings:d.settings});});
 app.post('/api/progress',requireStudent,(req,res)=>{const d=load(),u=d.users.find(x=>x.id===req.user.id),cid=req.body.courseId;if(!isActiveEnrollment(d,u,cid))return res.status(403).json({error:'Course access is inactive.'});const p=Math.max(0,Math.min(100,Number(req.body.progress||0)));u.progress=u.progress||{};u.progress[cid]=p;if(p>=80){const existing=d.certificates.find(c=>c.studentId===u.id&&c.courseId===cid);if(!existing){const c=d.courses.find(c=>c.id===cid);d.certificates.unshift({id:id('CERT'),certificateNo:'HSA-CERT-'+Date.now(),studentId:u.id,studentName:u.name,courseId:cid,courseTitle:c?.title||'',issuedAt:new Date().toISOString(),progress:p});d.notifications.unshift({id:id('NOT'),studentId:u.id,type:'certificate',title:'Certificate unlocked',text:`Congratulations! Your ${c?.title||'course'} certificate is ready at 80% completion.`,createdAt:new Date().toISOString()});}}save(d);res.json({ok:true,progress:p});});
 app.get('/api/certificates',requireStudent,(req,res)=>{const d=load();res.json({certificates:d.certificates.filter(c=>c.studentId===req.user.id)});});
 
 app.get('/api/receipt/:id',requireStudent,(req,res)=>{const d=load(),r=d.receipts.find(x=>x.id===req.params.id&&x.studentId===req.user.id);if(!r)return res.status(404).send('Receipt not found');res.type('html').send(`<!doctype html><html><head><meta charset="utf-8"><title>${r.receiptNo}</title><style>body{font-family:Arial;background:#f4f7fb;padding:30px}.box{max-width:720px;margin:auto;background:#fff;padding:35px;border-radius:18px;box-shadow:0 15px 50px #0001}h1{color:#0a1b35}.row{display:flex;justify-content:space-between;border-bottom:1px solid #ddd;padding:12px 0}.ok{color:#087f5b;font-weight:bold}</style></head><body><div class="box"><h1>Hafiz Shahid's Academy</h1><p>Payment Receipt</p><div class="row"><b>Receipt No.</b><span>${r.receiptNo}</span></div><div class="row"><b>Student</b><span>${r.studentName}</span></div><div class="row"><b>Course</b><span>${r.courseTitle}</span></div><div class="row"><b>Amount Paid</b><span>₹${Number(r.amount).toLocaleString('en-IN')}</span></div><div class="row"><b>Payment Date</b><span>${new Date(r.paymentDate).toLocaleString('en-IN')}</span></div><div class="row"><b>Joining Date</b><span>${new Date(r.joiningDate).toLocaleDateString('en-IN')}</span></div><div class="row"><b>Course Access Ends</b><span>${new Date(r.endDate).toLocaleDateString('en-IN')}</span></div><div class="row"><b>UTR</b><span>${r.utr||'—'}</span></div><p class="ok">Payment verified • Course access activated</p><button onclick="window.print()">Print / Save PDF</button></div></body></html>`);});
+
+const adminPreviewTokens=new Map();
+app.get('/api/admin/student/:id/preview',requireAdmin,(req,res)=>{const d=load(),u=d.users.find(x=>x.id===req.params.id&&x.role==='student'&&x.status==='active');if(!u)return res.status(404).json({error:'Student not found'});const token=crypto.randomBytes(32).toString('hex');adminPreviewTokens.set(token,{userId:u.id,expiresAt:Date.now()+10*60*1000});res.json({ok:true,url:'/?adminPreview='+token});});
+app.get('/api/auth/student-preview',(req,res)=>{const token=String(req.query.token||''),entry=adminPreviewTokens.get(token);if(!entry||entry.expiresAt<Date.now()){adminPreviewTokens.delete(token);return res.status(401).json({error:'Preview expired.'});}const d=load(),u=d.users.find(x=>x.id===entry.userId&&x.role==='student'&&x.status==='active');adminPreviewTokens.delete(token);if(!u)return res.status(404).json({error:'Student not found'});u.sessionToken=crypto.randomBytes(32).toString('hex');save(d);res.json({ok:true,token:u.sessionToken,user:sanitizeUser(u)});});
 
 app.get('/api/admin/logout',requireAdmin,(req,res)=>{adminSessions.delete(req.headers['x-admin-token']);res.json({ok:true});});
 app.get('*',(req,res)=>res.sendFile(path.join(ROOT,'index.html')));
