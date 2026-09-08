@@ -94,16 +94,40 @@ const pendingOtps=new Map();
 const pendingStudentRegistrations=new Map();
 const storage=multer.diskStorage({
  destination:(req,file,cb)=>{
-   let type=req.body.uploadType||'materials';
-   if(file.fieldname==='syllabusFile') type='materials';
-   cb(null,path.join(UPLOAD_ROOT,['videos','materials','assignments','payments','profiles','covers','branding'].includes(type)?type:'materials'));
+   // Multipart fields are not guaranteed to be parsed before the file field.
+   // Always route by the actual field name first so uploads never land in the wrong folder.
+   const byField={cover:'covers',syllabusFile:'materials',file:(req.body.uploadType==='videos'?'videos':'materials'),hero:'branding',logo:'branding',photo:'profiles',screenshot:'payments',imageFile:'materials'};
+   let type=byField[file.fieldname] || req.body.uploadType || 'materials';
+   if(!['videos','materials','assignments','payments','profiles','covers','branding'].includes(type)) type='materials';
+   cb(null,path.join(UPLOAD_ROOT,type));
  },
  filename:(req,file,cb)=>cb(null,`${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${path.basename(file.originalname).replace(/[^a-zA-Z0-9._-]/g,'_')}`)
 });
 const upload=multer({storage,limits:{fileSize:100*1024*1024}});
 app.use(express.json({limit:'8mb'}));
 app.use(express.urlencoded({extended:true}));
+// Uploaded course covers are stored as data URLs in the database. This avoids the
+// Render filesystem disappearing after a restart/redeploy and prevents broken covers.
+function imageDataUrl(file){
+  if(!file || !file.path) return '';
+  try {
+    const mime = String(file.mimetype||'image/jpeg').split(';')[0];
+    const data = fs.readFileSync(file.path).toString('base64');
+    try { fs.unlinkSync(file.path); } catch {}
+    return `data:${mime};base64,${data}`;
+  } catch { return ''; }
+}
+app.get('/uploads/covers/:file',(req,res,next)=>{
+  const safe=path.basename(req.params.file);
+  const cover=path.join(UPLOAD_ROOT,'covers',safe);
+  const legacy=path.join(UPLOAD_ROOT,'materials',safe);
+  if(fs.existsSync(cover)) return res.sendFile(cover);
+  if(fs.existsSync(legacy)) return res.sendFile(legacy);
+  next();
+});
 app.use('/uploads', express.static(UPLOAD_ROOT, {fallthrough:false, maxAge:'1h'}));
+// Always make the public student website the root page. Admin remains /admin.html.
+app.get('/',(req,res)=>res.sendFile(path.join(ROOT,'index.html')));
 app.use(express.static(ROOT));
 
 app.get('/api/public-state',(req,res)=>res.json(publicState()));
@@ -321,9 +345,13 @@ app.post('/api/admin/teacher/:id/delete',requireAdmin,(req,res)=>{const d=load()
 app.post('/api/admin/message-log',requireAdmin,(req,res)=>{const d=load();const item={id:id('MSG'),channel:req.body.channel||'whatsapp',audience:req.body.audience||'individual',studentIds:Array.isArray(req.body.studentIds)?req.body.studentIds:[],subject:req.body.subject||'',message:req.body.message||'',createdAt:new Date().toISOString()};d.messageLogs.unshift(item);save(d);res.json({ok:true,message:item});});
 
 app.post('/api/admin/course',requireAdmin,upload.fields([{name:'cover',maxCount:1},{name:'syllabusFile',maxCount:1}]),(req,res)=>{
-  const d=load(); const c={id:id('COURSE'),title:req.body.title,category:req.body.category||'General',price:Number(req.body.price||0),oldPrice:Number(req.body.oldPrice||0),description:req.body.description||'',level:req.body.level||'All Levels',duration:req.body.duration||'30 days',validity:req.body.validity||req.body.duration||'30 days',image:req.files?.cover?.[0]?'/uploads/covers/'+req.files.cover[0].filename:(req.body.image||''),syllabusUrl:req.files?.syllabusFile?.[0]?'/uploads/materials/'+req.files.syllabusFile[0].filename:(req.body.syllabusUrl||''),startDate:req.body.startDate||'',lessons:[],createdAt:new Date().toISOString()}; d.courses.push(c); save(d); res.json({ok:true,course:c});
+  const d=load();
+  const coverFile=req.files?.cover?.[0];
+  const coverData=imageDataUrl(coverFile);
+  const c={id:id('COURSE'),title:req.body.title,category:req.body.category||'General',price:Number(req.body.price||0),oldPrice:Number(req.body.oldPrice||0),description:req.body.description||'',level:req.body.level||'All Levels',duration:req.body.duration||'30 days',validity:req.body.validity||req.body.duration||'30 days',image:coverData||req.body.image||'',syllabusUrl:req.files?.syllabusFile?.[0]?'/uploads/materials/'+req.files.syllabusFile[0].filename:(req.body.syllabusUrl||''),startDate:req.body.startDate||'',lessons:[],createdAt:new Date().toISOString()};
+  d.courses.push(c); save(d); res.json({ok:true,course:c});
 });
-app.post('/api/admin/course/:id/edit',requireAdmin,upload.fields([{name:'cover',maxCount:1},{name:'syllabusFile',maxCount:1}]),(req,res)=>{const d=load(),c=d.courses.find(x=>x.id===req.params.id);if(!c)return res.status(404).json({error:'Course not found'});for(const k of ['title','category','description','level','duration','startDate'])if(req.body[k]!==undefined)c[k]=req.body[k];if(req.body.price!==undefined)c.price=Number(req.body.price);if(req.body.oldPrice!==undefined)c.oldPrice=Number(req.body.oldPrice);if(req.body.validity!==undefined)c.validity=req.body.validity;if(req.body.syllabusUrl!==undefined)c.syllabusUrl=req.body.syllabusUrl;if(req.files?.cover?.[0])c.image='/uploads/covers/'+req.files.cover[0].filename;else if(req.body.image)c.image=req.body.image;if(req.files?.syllabusFile?.[0])c.syllabusUrl='/uploads/materials/'+req.files.syllabusFile[0].filename;else if(req.body.syllabusUrl!==undefined)c.syllabusUrl=req.body.syllabusUrl;save(d);res.json({ok:true,course:c});});
+app.post('/api/admin/course/:id/edit',requireAdmin,upload.fields([{name:'cover',maxCount:1},{name:'syllabusFile',maxCount:1}]),(req,res)=>{const d=load(),c=d.courses.find(x=>x.id===req.params.id);if(!c)return res.status(404).json({error:'Course not found'});for(const k of ['title','category','description','level','duration','startDate'])if(req.body[k]!==undefined)c[k]=req.body[k];if(req.body.price!==undefined)c.price=Number(req.body.price);if(req.body.oldPrice!==undefined)c.oldPrice=Number(req.body.oldPrice);if(req.body.validity!==undefined)c.validity=req.body.validity;if(req.files?.cover?.[0]){if(typeof c.image==='string'&&c.image.startsWith('/uploads/'))removeUploadFile(c.image);const coverData=imageDataUrl(req.files.cover[0]);if(coverData)c.image=coverData;}else if(req.body.image)c.image=req.body.image;if(req.files?.syllabusFile?.[0])c.syllabusUrl='/uploads/materials/'+req.files.syllabusFile[0].filename;else if(req.body.syllabusUrl!==undefined)c.syllabusUrl=req.body.syllabusUrl;save(d);res.json({ok:true,course:c});});
 app.post('/api/admin/course/:id/delete',requireAdmin,(req,res)=>{const d=load();d.courses=d.courses.filter(c=>c.id!==req.params.id);save(d);res.json({ok:true});});
 
 app.post('/api/admin/lesson',requireAdmin,upload.single('file'),(req,res)=>{
