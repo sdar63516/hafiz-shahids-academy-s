@@ -35,7 +35,7 @@
 </div></div></main></section>
 <script>
 let D=null,adminToken=localStorage.getItem('hsa_admin_token')||'';const $=id=>document.getElementById(id),money=n=>'₹'+Number(n||0).toLocaleString('en-IN');
-async function api(u,o={}){o.headers={...(o.headers||{}),...(adminToken?{'x-admin-token':adminToken}:{})};const r=await fetch(u,o);let j={};try{j=await r.json()}catch{}if(!r.ok)throw Error(j.error||'Error');return j}
+async function api(u,o={}){o.headers={Accept:'application/json',...(o.headers||{}),...(adminToken?{'x-admin-token':adminToken}:{})};if(o.method==='GET'||!o.method)o.cache='no-store';const r=await fetch(u,o);let j={};try{j=await r.json()}catch{}if(!r.ok)throw Error(j.error||'Error');return j}
 function toast(t){const e=$('toast');e.className='toast';e.textContent=t;setTimeout(()=>e.className='',3000)}
 async function adminLogin(e){e.preventDefault();try{const j=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('ap').value})}).then(async r=>{const x=await r.json();if(!r.ok)throw Error(x.error);return x});adminToken=j.token;localStorage.setItem('hsa_admin_token',adminToken);await load();$('adminLogin').classList.add('hidden');$('adminApp').classList.remove('hidden');toast('Welcome, Super Admin.')}catch(err){toast(err.message)}}
 async function load(){D=await api('/api/admin-state');D=normalizeAdminState(D);render();}
@@ -99,7 +99,33 @@ function esc(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 async function saveCourseEdit(e,id){e.preventDefault();const fd=new FormData();fd.append('title',$('ec_title').value.trim());fd.append('category',$('ec_category').value.trim());fd.append('price',$('ec_price').value||0);fd.append('oldPrice',$('ec_old').value||0);fd.append('level',$('ec_level').value.trim());fd.append('duration',$('ec_duration').value.trim());fd.append('validity',$('ec_validity').value.trim());fd.append('syllabusUrl',$('ec_syllabus').value.trim());fd.append('startDate',$('ec_start').value);fd.append('description',$('ec_desc').value.trim());fd.append('image',$('ec_image').value.trim());if($('ec_cover').files[0])fd.append('cover',$('ec_cover').files[0]);if($('ec_syllabusFile').files[0])fd.append('syllabusFile',$('ec_syllabusFile').files[0]);fd.append('uploadType','covers');try{await api('/api/admin/course/'+id+'/edit',{method:'POST',body:fd});document.getElementById('editCourseModal')?.remove();toast('Course updated successfully.');await refresh()}catch(err){toast(err.message)}}
 async function deleteCourse(id){if(!confirm('Delete this course from the demo?'))return;await api('/api/admin/course/'+id+'/delete',{method:'POST'});toast('Course deleted.');await refresh()}
 function lessonType(){const up=$('ltype').value==='upload';$('lyoutube').classList.toggle('hidden',up);$('lfile').classList.toggle('hidden',!up)}
-async function addLesson(e){e.preventDefault();const fd=new FormData();fd.append('courseId',$('lcourse').value);fd.append('title',$('ltitle').value);fd.append('type',$('ltype').value);fd.append('video',$('lyoutube').value);fd.append('description',$('ldesc').value);fd.append('free',$('lfree').checked);fd.append('uploadType','videos');if($('lfile').files[0])fd.append('file',$('lfile').files[0]);try{await api('/api/admin/lesson',{method:'POST',body:fd});e.target.reset();lessonType();toast('Recorded class added and active students notified.');await refresh()}catch(e){toast(e.message)}}
+async function addLesson(e){
+  e.preventDefault();
+  const btn=e.target.querySelector('button[type="submit"]')||e.target.querySelector('button.primary');
+  const old=btn?.textContent;
+  if(btn){btn.disabled=true;btn.textContent='Saving…';}
+  try{
+    const file=$('lfile').files[0];
+    if(file && $('ltype').value==='upload'){
+      const started=await api('/api/admin/video-upload/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:file.name,size:file.size})});
+      const chunkSize=4*1024*1024; let sent=0;
+      while(sent<file.size){
+        const blob=file.slice(sent,Math.min(sent+chunkSize,file.size));
+        const r=await fetch('/api/admin/video-upload/chunk',{method:'POST',headers:{'x-admin-token':adminToken,'x-upload-id':started.uploadId,'Content-Type':'application/octet-stream'},body:blob});
+        let j={};try{j=await r.json()}catch{} if(!r.ok)throw Error(j.error||'Video upload failed.');
+        sent+=blob.size;
+        if(btn)btn.textContent=`Uploading… ${Math.round(sent/file.size*100)}%`;
+      }
+      const done=await api('/api/admin/video-upload/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uploadId:started.uploadId})});
+      await api('/api/admin/lesson-uploaded',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({courseId:$('lcourse').value,title:$('ltitle').value,video:done.video,description:$('ldesc').value,free:$('lfree').checked})});
+    }else{
+      const fd=new FormData();fd.append('courseId',$('lcourse').value);fd.append('title',$('ltitle').value);fd.append('type',$('ltype').value);fd.append('video',$('lyoutube').value);fd.append('description',$('ldesc').value);fd.append('free',$('lfree').checked);fd.append('uploadType','videos');
+      await api('/api/admin/lesson',{method:'POST',body:fd});
+    }
+    e.target.reset();lessonType();toast('Recorded class saved successfully.');await refresh();
+  }catch(err){toast(err.message||'Unable to save recorded class.');}
+  finally{if(btn){btn.disabled=false;btn.textContent=old||'Save';}}
+}
 async function addMaterial(e){e.preventDefault();const fd=new FormData();fd.append('courseId',$('mcourse').value);fd.append('title',$('mtitle').value);fd.append('file',$('mfile').files[0]);fd.append('uploadType','materials');try{await api('/api/admin/material',{method:'POST',body:fd});e.target.reset();toast('Material uploaded and students notified.');await refresh()}catch(e){toast(e.message)}}
 async function addAssignment(e){e.preventDefault();await api('/api/admin/assignment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({courseId:$('acourse').value,title:$('atitle').value,description:$('adesc').value,dueDate:$('adue').value,points:$('apoints').value})});e.target.reset();toast('Assignment created.');await refresh()}
 async function grade(id){const score=prompt('Score');if(score===null)return;const feedback=prompt('Feedback')||'';await api('/api/admin/submission/'+id+'/grade',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({score,feedback})});toast('Submission graded.');await refresh()}
@@ -107,7 +133,22 @@ async function addLive(e){e.preventDefault();await api('/api/admin/live',{method
 async function addPost(e){e.preventDefault();const fd=new FormData();fd.append('title',$('postTitle').value);fd.append('text',$('postText').value);fd.append('image',$('postImage').value);fd.append('uploadType','materials');if($('postFile').files[0])fd.append('imageFile',$('postFile').files[0]);try{await api('/api/admin/post',{method:'POST',body:fd});e.target.reset();toast('Homepage post published.');await refresh()}catch(e){toast(e.message)}}
 function modalForm(title,html,onsubmit){let m=document.getElementById('crudModal');if(!m){m=document.createElement('div');m.id='crudModal';m.className='modal';document.body.appendChild(m);}m.innerHTML=`<div class="modal-card"><button class="close" onclick="this.closest('.modal').remove()">×</button><h2>${title}</h2>${html}</div>`;}
 function editLesson(id){const l=D.courses.flatMap(c=>c.lessons||[]).find(x=>x.id===id);if(!l)return;modalForm('Edit Recorded Class',`<form class="form" onsubmit="saveLessonEdit(event,'${id}')"><input id="xlt" value="${esc(l.title)}" required><select id="xltp"><option value="youtube" ${l.type==='youtube'?'selected':''}>YouTube link</option><option value="upload" ${l.type==='upload'?'selected':''}>Replace with upload</option></select><input id="xlv" value="${esc(l.video||'')}" placeholder="YouTube URL"><input id="xlf" type="file" accept="video/*"><textarea id="xld">${esc(l.description||'')}</textarea><label><input id="xlfree" type="checkbox" ${l.free?'checked':''}> Free preview</label><button class="primary">Save</button></form>`)}
-async function saveLessonEdit(e,id){e.preventDefault();const fd=new FormData();fd.append('title',$('xlt').value);fd.append('video',$('xlv').value);fd.append('description',$('xld').value);fd.append('free',$('xlfree').checked);if($('xlf').files[0]){fd.append('file',$('xlf').files[0]);fd.append('uploadType','videos')}await api('/api/admin/lesson/'+id+'/edit',{method:'POST',body:fd});$('crudModal').remove();await refresh();toast('Recorded class updated.')}
+async function saveLessonEdit(e,id){
+  e.preventDefault();
+  const btn=e.target.querySelector('button.primary');const old=btn?.textContent;if(btn){btn.disabled=true;btn.textContent='Saving…';}
+  try{
+    const file=$('xlf').files[0];let video='';
+    if(file){
+      const started=await api('/api/admin/video-upload/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:file.name,size:file.size})});
+      const chunkSize=4*1024*1024;let sent=0;
+      while(sent<file.size){const blob=file.slice(sent,Math.min(sent+chunkSize,file.size));const r=await fetch('/api/admin/video-upload/chunk',{method:'POST',headers:{'x-admin-token':adminToken,'x-upload-id':started.uploadId,'Content-Type':'application/octet-stream'},body:blob});let j={};try{j=await r.json()}catch{}if(!r.ok)throw Error(j.error||'Video upload failed.');sent+=blob.size;if(btn)btn.textContent=`Uploading… ${Math.round(sent/file.size*100)}%`;}
+      const done=await api('/api/admin/video-upload/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uploadId:started.uploadId})});video=done.video;
+    }
+    await api('/api/admin/lesson-uploaded-edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,title:$('xlt').value,video,description:$('xld').value,free:$('xlfree').checked})});
+    $('crudModal').remove();await refresh();toast('Recorded class updated successfully.');
+  }catch(err){toast(err.message||'Unable to save recorded class.');}
+  finally{if(btn){btn.disabled=false;btn.textContent=old||'Save';}}
+}
 async function deleteLesson(id){if(confirm('Delete this recorded class?')){await api('/api/admin/lesson/'+id+'/delete',{method:'POST'});await refresh();}}
 function editMaterial(id){const m=D.materials.find(x=>x.id===id);if(!m)return;modalForm('Edit Study Material',`<form class="form" onsubmit="saveMaterialEdit(event,'${id}')"><input id="xmt" value="${esc(m.title)}" required><select id="xmc">${opts()}</select><input id="xmf" type="file"><button class="primary">Save</button></form>`);$('xmc').value=m.courseId}
 async function saveMaterialEdit(e,id){e.preventDefault();const fd=new FormData();fd.append('title',$('xmt').value);fd.append('courseId',$('xmc').value);if($('xmf').files[0]){fd.append('file',$('xmf').files[0]);fd.append('uploadType','materials')}await api('/api/admin/material/'+id+'/edit',{method:'POST',body:fd});$('crudModal').remove();await refresh();}

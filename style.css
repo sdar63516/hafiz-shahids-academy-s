@@ -245,3 +245,21 @@ html,body{max-width:100%;overflow-x:hidden}.course-shell,.course-grid,.learning-
 .latest-post-card-body small{font-size:8px;color:#8290a3}
 @media(max-width:900px){.latest-post-card{flex-basis:175px;width:175px}}
 @media(max-width:700px){.latest-post-card{flex-basis:165px;width:165px}.latest-posts-slider{gap:10px}}
+
+
+/* Dashboard layout requested: purchased courses full width + square cards, latest posts below. */
+.home-main-grid{display:block!important}
+.dashboard-section{width:100%;max-width:100%;margin:0 0 18px;overflow:hidden}
+.section-title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.section-title-row h3{margin:0}
+.section-title-row p{margin:3px 0 0}
+.purchased-square-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.purchased-square-grid .learning-card{display:flex;flex-direction:column;gap:0;border:1px solid var(--line);border-radius:16px;padding:0;overflow:hidden;background:#fff;min-width:0;height:100%}
+.purchased-square-grid .learning-card .thumb{width:100%;height:auto;aspect-ratio:1/1;border-radius:0;background-position:center;background-size:cover;flex:none}
+.purchased-square-grid .learning-card-body{padding:13px;display:flex;flex-direction:column;flex:1;min-width:0}
+.purchased-square-grid .learning-card h3{font-size:15px;margin:7px 0;line-height:1.25}
+.purchased-square-grid .learning-card .wide{margin-top:auto;padding-top:11px;padding-bottom:11px}
+.feature-strip>button{font:inherit;text-align:left;cursor:pointer;border:1px solid var(--line);color:inherit}
+@media(max-width:900px){.purchased-square-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.purchased-square-grid{grid-template-columns:1fr 1fr;gap:10px}.purchased-square-grid .learning-card h3{font-size:13px}.purchased-square-grid .learning-card-body{padding:10px}.purchased-square-grid .learning-card .wide{font-size:11px}.dashboard-section{padding:13px}}
+@media(max-width:390px){.purchased-square-grid{grid-template-columns:1fr}}

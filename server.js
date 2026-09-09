@@ -130,6 +130,54 @@ app.use('/uploads', express.static(UPLOAD_ROOT, {fallthrough:false, maxAge:'1h'}
 app.get('/',(req,res)=>res.sendFile(path.join(ROOT,'index.html')));
 app.use(express.static(ROOT));
 
+// Chunked video upload: keeps the admin UI responsive and avoids one huge request timing out.
+const videoUploads=new Map();
+app.post('/api/admin/video-upload/start',requireAdmin,(req,res)=>{
+  const name=path.basename(String(req.body?.name||'video.mp4')).replace(/[^a-zA-Z0-9._-]/g,'_')||'video.mp4';
+  const uploadId=id('VID');
+  const temp=path.join(UPLOAD_ROOT,'videos',`.${uploadId}.part`);
+  fs.writeFileSync(temp,Buffer.alloc(0));
+  videoUploads.set(uploadId,{temp,name,size:Number(req.body?.size||0),createdAt:Date.now()});
+  res.json({ok:true,uploadId});
+});
+app.post('/api/admin/video-upload/chunk',requireAdmin,express.raw({type:'application/octet-stream',limit:'8mb'}),(req,res)=>{
+  const uploadId=String(req.headers['x-upload-id']||'');
+  const entry=videoUploads.get(uploadId);
+  if(!entry)return res.status(404).json({error:'Video upload session not found.'});
+  if(!Buffer.isBuffer(req.body))return res.status(400).json({error:'Invalid video chunk.'});
+  fs.appendFileSync(entry.temp,req.body);
+  res.json({ok:true,received:req.body.length});
+});
+app.post('/api/admin/video-upload/complete',requireAdmin,(req,res)=>{
+  const uploadId=String(req.body?.uploadId||'');
+  const entry=videoUploads.get(uploadId);
+  if(!entry)return res.status(404).json({error:'Video upload session not found.'});
+  if(!fs.existsSync(entry.temp))return res.status(404).json({error:'Uploaded video data not found.'});
+  const finalName=`${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${entry.name}`;
+  const finalPath=path.join(UPLOAD_ROOT,'videos',finalName);
+  fs.renameSync(entry.temp,finalPath);
+  videoUploads.delete(uploadId);
+  res.json({ok:true,video:'/uploads/videos/'+finalName,size:fs.statSync(finalPath).size});
+});
+app.post('/api/admin/lesson-uploaded-edit',requireAdmin,async(req,res)=>{
+  const d=load();let found=null;
+  for(const c of d.courses){const l=(c.lessons||[]).find(x=>x.id===req.body.id);if(l){found={c,l};break;}}
+  if(!found)return res.status(404).json({error:'Lesson not found'});
+  const {l}=found;
+  for(const k of ['title','description'])if(req.body[k]!==undefined)l[k]=req.body[k];
+  if(req.body.video){removeUploadFile(l.video);l.type='upload';l.video=String(req.body.video);}
+  l.free=String(req.body.free)==='true';
+  await save(d);res.json({ok:true,lesson:l});
+});
+app.post('/api/admin/lesson-uploaded',requireAdmin,async(req,res)=>{
+  const d=load(),c=d.courses.find(x=>x.id===req.body.courseId);
+  if(!c)return res.status(404).json({error:'Course not found'});
+  const l={id:id('LESSON'),title:String(req.body.title||'').trim(),type:'upload',video:String(req.body.video||''),description:req.body.description||'',free:String(req.body.free)==='true'};
+  if(!l.title||!l.video)return res.status(400).json({error:'Lesson title and uploaded video are required.'});
+  c.lessons=c.lessons||[];c.lessons.push(l);await save(d);res.json({ok:true,lesson:l});
+});
+setInterval(()=>{const cutoff=Date.now()-30*60*1000;for(const [k,v] of videoUploads){if(v.createdAt<cutoff){try{fs.unlinkSync(v.temp)}catch{}videoUploads.delete(k)}}},10*60*1000).unref();
+
 app.get('/api/public-state',(req,res)=>res.json(publicState()));
 app.get('/api/health',(req,res)=>res.json({ok:true,academy:"Hafiz Shahid's Academy",mode:process.env.DATABASE_URL?'postgres':'local',time:new Date().toISOString()}));
 
