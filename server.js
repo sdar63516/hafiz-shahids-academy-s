@@ -96,7 +96,8 @@ const storage=multer.diskStorage({
  destination:(req,file,cb)=>{
    // Multipart fields are not guaranteed to be parsed before the file field.
    // Always route by the actual field name first so uploads never land in the wrong folder.
-   const byField={cover:'covers',syllabusFile:'materials',file:(req.body.uploadType==='videos'?'videos':'materials'),hero:'branding',logo:'branding',photo:'profiles',screenshot:'payments',imageFile:'materials'};
+   const routeHint=String(req.originalUrl||'');
+   const byField={cover:'covers',syllabusFile:'materials',file:(routeHint.includes('/lesson')||req.body.uploadType==='videos'?'videos':'materials'),hero:'branding',logo:'branding',photo:'profiles',screenshot:'payments',imageFile:'materials'};
    let type=byField[file.fieldname] || req.body.uploadType || 'materials';
    if(!['videos','materials','assignments','payments','profiles','covers','branding'].includes(type)) type='materials';
    cb(null,path.join(UPLOAD_ROOT,type));
@@ -129,6 +130,14 @@ app.use('/uploads', express.static(UPLOAD_ROOT, {fallthrough:false, maxAge:'1h'}
 // Always make the public student website the root page. Admin remains /admin.html.
 app.get('/',(req,res)=>res.sendFile(path.join(ROOT,'index.html')));
 app.use(express.static(ROOT));
+
+// Cloudinary direct-video upload configuration. The browser uploads large videos
+// directly to Cloudinary, so Render never has to receive/store the video bytes.
+app.get('/api/admin/video-config',requireAdmin,(req,res)=>{
+  const cloudName=String(process.env.CLOUDINARY_CLOUD_NAME||'').trim();
+  const uploadPreset=String(process.env.CLOUDINARY_UPLOAD_PRESET||'').trim();
+  res.json({configured:!!(cloudName&&uploadPreset),cloudName,uploadPreset});
+});
 
 // Chunked video upload: keeps the admin UI responsive and avoids one huge request timing out.
 const videoUploads=new Map();
