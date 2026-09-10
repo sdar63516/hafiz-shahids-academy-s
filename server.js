@@ -11,6 +11,44 @@ const ROOT = __dirname;
 const UPLOAD_ROOT = path.join(ROOT, 'uploads');
 for (const f of ['videos','materials','assignments','payments','profiles','covers','branding']) fs.mkdirSync(path.join(UPLOAD_ROOT,f), {recursive:true});
 
+// Brevo transactional email integration. The API key stays server-side and is never sent to the browser.
+const BREVO_ENDPOINT='https://api.brevo.com/v3/smtp/email';
+function brevoConfig(){return {apiKey:String(process.env.BREVO_API_KEY||'').trim(),fromEmail:String(process.env.BREVO_FROM_EMAIL||'').trim(),fromName:String(process.env.BREVO_FROM_NAME||"Hafiz Shahid's Academy").trim()||"Hafiz Shahid's Academy"};}
+async function sendBrevoEmail({toEmail,toName,subject,htmlContent,textContent}){
+  const cfg=brevoConfig();
+  if(!cfg.apiKey)return {ok:false,skipped:true,reason:'BREVO_API_KEY is not configured.'};
+  if(!cfg.fromEmail)return {ok:false,skipped:true,reason:'BREVO_FROM_EMAIL is not configured.'};
+  if(!toEmail || !/^\S+@\S+\.\S+$/.test(String(toEmail)))return {ok:false,skipped:true,reason:'Recipient email is missing or invalid.'};
+  try{
+    const r=await fetch(BREVO_ENDPOINT,{method:'POST',headers:{accept:'application/json','api-key':cfg.apiKey,'content-type':'application/json'},body:JSON.stringify({sender:{name:cfg.fromName,email:cfg.fromEmail},to:[{email:String(toEmail).trim(),name:String(toName||'Student').trim()}],subject:String(subject||"Hafiz Shahid's Academy"),htmlContent:String(htmlContent||''),textContent:String(textContent||'')})});
+    let body={};try{body=await r.json()}catch{}
+    if(!r.ok)return {ok:false,status:r.status,reason:body?.message||body?.error||'Brevo email request failed.'};
+    return {ok:true,messageId:body?.messageId||''};
+  }catch(e){return {ok:false,reason:e?.message||'Brevo connection failed.'};}
+}
+async function logBrevoEmail(d,{studentId,toEmail,toName,subject,text,result,type='transactional'}){
+  d.messageLogs=d.messageLogs||[];
+  d.messageLogs.unshift({id:id('MAIL'),channel:'email',audience:'individual',studentIds:studentId?[studentId]:[],toEmail:String(toEmail||''),toName:String(toName||''),subject:String(subject||''),message:String(text||''),status:result?.ok?'sent':(result?.skipped?'skipped':'failed'),error:result?.reason||'',createdAt:new Date().toISOString(),type});
+}
+async function sendStudentEmail(d,u,subject,htmlContent,textContent,type='transactional'){
+  const result=await sendBrevoEmail({toEmail:u?.email,toName:u?.name,subject,htmlContent,textContent});
+  await logBrevoEmail(d,{studentId:u?.id,toEmail:u?.email,toName:u?.name,subject,text:textContent,result,type});
+  return result;
+}
+async function sendCourseClassEmails(d,course,{title,kind,joinUrl,recordingUrl,description}){
+  const students=d.users.filter(u=>u.role==='student'&&u.status==='active'&&isActiveEnrollment(d,u,course.id));
+  let sent=0,skipped=0;
+  for(const u of students){
+    if(!u.email){await logBrevoEmail(d,{studentId:u.id,toEmail:'',toName:u.name,subject:`${kind}: ${title}`,text:`${title} — ${course.title}`,result:{skipped:true,reason:'Student email is not saved.'},type:'class-notification'});skipped++;continue;}
+    const safeTitle=String(title||'Class').replace(/[<>]/g,''); const safeCourse=String(course.title||'Course').replace(/[<>]/g,'');
+    const action=joinUrl?`<p><a href="${joinUrl}" style="display:inline-block;padding:12px 18px;background:#2563eb;color:#fff;text-decoration:none;border-radius:10px;font-weight:700">Join Class</a></p>`:recordingUrl?`<p><a href="${recordingUrl}" style="display:inline-block;padding:12px 18px;background:#2563eb;color:#fff;text-decoration:none;border-radius:10px;font-weight:700">Open Class</a></p>`:'';
+    const text=`Hafiz Shahid's Academy\n\n${kind}: ${safeTitle}\nCourse: ${safeCourse}\n${description||''}\n${joinUrl?`Join: ${joinUrl}`:''}${recordingUrl?`Open: ${recordingUrl}`:''}`;
+    const result=await sendStudentEmail(d,u,`${kind} • ${safeCourse}`,`<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:24px;color:#12243d"><h2 style="margin:0 0 8px">Hafiz Shahid's Academy</h2><p style="color:#667085">${kind}</p><h1 style="font-size:25px;margin:10px 0">${safeTitle}</h1><p><b>Course:</b> ${safeCourse}</p><p>${String(description||'A new class is now available for your course.').replace(/\n/g,'<br>')}</p>${action}<p style="color:#667085;font-size:13px">This notification was sent automatically by the academy.</p></div>`,text,'class-notification');
+    if(result.ok)sent++;else skipped++;
+  }
+  return {sent,skipped,total:students.length};
+}
+
 function id(prefix){ return `${prefix}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`; }
 function cleanPhone(country, phone){ return `${country||'+91'}${String(phone||'').replace(/\D/g,'')}`; }
 function durationDays(text){
@@ -79,7 +117,8 @@ function studentState(u){
   const fullAccess=hasFullCourseAccess(u);
   const mine=(owner || fullAccess) ? d.courses.map(c=>({courseId:c.id,courseTitle:c.title,joiningDate:new Date().toISOString(),endDate:'2099-12-31T23:59:59.000Z',status:'active',active:true})) : (u.enrollments||[]).filter(e=>e.status==='active').map(e=>({...e,active:new Date(e.endDate)>=new Date()}));
   const allowed=(owner || fullAccess) ? ()=>true : (cid)=>mine.some(e=>e.courseId===cid && e.active);
-  return {settings:d.settings,courses:d.courses,materials:d.materials.filter(m=>allowed(m.courseId)),assignments:d.assignments.filter(a=>allowed(a.courseId)),submissions:d.submissions.filter(s=>s.studentId===u.id),liveClasses:d.liveClasses.filter(l=>allowed(l.courseId)),announcements:d.announcements,posts:d.posts,notifications:d.notifications.filter(n=>n.studentId===u.id),receipts:d.receipts.filter(r=>r.studentId===u.id),user:sanitizeUser(u)};
+  const safeUser=sanitizeUser(u); if(owner||fullAccess){safeUser.enrollments=mine;safeUser.purchased=d.courses.map(c=>c.id);} else {safeUser.enrollments=mine;}
+  return {settings:d.settings,courses:d.courses,materials:d.materials.filter(m=>allowed(m.courseId)),assignments:d.assignments.filter(a=>allowed(a.courseId)),submissions:d.submissions.filter(s=>s.studentId===u.id),liveClasses:d.liveClasses.filter(l=>allowed(l.courseId)),announcements:d.announcements,posts:d.posts,notifications:d.notifications.filter(n=>n.studentId===u.id),receipts:d.receipts.filter(r=>r.studentId===u.id),user:safeUser};
 }
 function adminState(){
   const d=load();
@@ -107,16 +146,27 @@ const storage=multer.diskStorage({
 const upload=multer({storage,limits:{fileSize:100*1024*1024}});
 app.use(express.json({limit:'8mb'}));
 app.use(express.urlencoded({extended:true}));
-// Uploaded course covers are stored as data URLs in the database. This avoids the
-// Render filesystem disappearing after a restart/redeploy and prevents broken covers.
+// Render's local filesystem is ephemeral. Small images that must survive a restart
+// are stored in Neon as data URLs. Large videos remain on Cloudinary.
 function imageDataUrl(file){
   if(!file || !file.path) return '';
   try {
-    const mime = String(file.mimetype||'image/jpeg').split(';')[0];
-    const data = fs.readFileSync(file.path).toString('base64');
-    try { fs.unlinkSync(file.path); } catch {}
+    const mime=String(file.mimetype||'image/jpeg').split(';')[0];
+    if(!mime.startsWith('image/')) return '';
+    const data=fs.readFileSync(file.path).toString('base64');
+    try{fs.unlinkSync(file.path)}catch{}
     return `data:${mime};base64,${data}`;
-  } catch { return ''; }
+  }catch{return '';}
+}
+function hydrateDurableImages(d){
+  let changed=false;
+  for(const p of d.posts||[]){
+    if(typeof p.image==='string'&&p.image.startsWith('/uploads/materials/')){const file=path.join(ROOT,p.image.replace(/^\//,''));if(fs.existsSync(file)){const data=imageDataUrl({path:file,mimetype:'image/jpeg'});if(data){p.image=data;changed=true;}}}
+  }
+  for(const p of d.payments||[]){
+    if(typeof p.screenshot==='string'&&p.screenshot.startsWith('/uploads/payments/')){const file=path.join(ROOT,p.screenshot.replace(/^\//,''));if(fs.existsSync(file)){const ext=path.extname(file).toLowerCase();const mime=ext==='.png'?'image/png':ext==='.webp'?'image/webp':'image/jpeg';const data=imageDataUrl({path:file,mimetype:mime});if(data){p.screenshot=data;changed=true;}}}
+  }
+  return changed;
 }
 app.get('/uploads/covers/:file',(req,res,next)=>{
   const safe=path.basename(req.params.file);
@@ -138,6 +188,7 @@ app.get('/api/admin/video-config',requireAdmin,(req,res)=>{
   const uploadPreset=String(process.env.CLOUDINARY_UPLOAD_PRESET||'').trim();
   res.json({configured:!!(cloudName&&uploadPreset),cloudName,uploadPreset});
 });
+app.get('/api/admin/brevo-status',requireAdmin,(req,res)=>{const c=brevoConfig();res.json({configured:!!(c.apiKey&&c.fromEmail),senderEmail:c.fromEmail?c.fromEmail.replace(/(^.).*(@.*$)/,'$1***$2'):'',senderName:c.fromName});});
 
 // Chunked video upload: keeps the admin UI responsive and avoids one huge request timing out.
 const videoUploads=new Map();
@@ -172,18 +223,19 @@ app.post('/api/admin/lesson-uploaded-edit',requireAdmin,async(req,res)=>{
   const d=load();let found=null;
   for(const c of d.courses){const l=(c.lessons||[]).find(x=>x.id===req.body.id);if(l){found={c,l};break;}}
   if(!found)return res.status(404).json({error:'Lesson not found'});
-  const {l}=found;
+  const {c,l}=found;
   for(const k of ['title','description'])if(req.body[k]!==undefined)l[k]=req.body[k];
   if(req.body.video){removeUploadFile(l.video);l.type='upload';l.video=String(req.body.video);}
   l.free=String(req.body.free)==='true';
-  await save(d);res.json({ok:true,lesson:l});
+  const mail=req.body.video?await sendCourseClassEmails(d,c,{title:l.title,kind:'Recorded class updated',recordingUrl:l.video,description:l.description||'A recorded class has been updated in your course.'}):{sent:0,skipped:0,total:0};
+  await save(d);res.json({ok:true,lesson:l,email:mail});
 });
 app.post('/api/admin/lesson-uploaded',requireAdmin,async(req,res)=>{
   const d=load(),c=d.courses.find(x=>x.id===req.body.courseId);
   if(!c)return res.status(404).json({error:'Course not found'});
   const l={id:id('LESSON'),title:String(req.body.title||'').trim(),type:'upload',video:String(req.body.video||''),description:req.body.description||'',free:String(req.body.free)==='true'};
   if(!l.title||!l.video)return res.status(400).json({error:'Lesson title and uploaded video are required.'});
-  c.lessons=c.lessons||[];c.lessons.push(l);await save(d);res.json({ok:true,lesson:l});
+  c.lessons=c.lessons||[];c.lessons.push(l);const mail=await sendCourseClassEmails(d,c,{title:l.title,kind:'New recorded class',recordingUrl:l.video,description:l.description||'A new recorded class is now available in your purchased course.'});await save(d);res.json({ok:true,lesson:l,email:mail});
 });
 setInterval(()=>{const cutoff=Date.now()-30*60*1000;for(const [k,v] of videoUploads){if(v.createdAt<cutoff){try{fs.unlinkSync(v.temp)}catch{}videoUploads.delete(k)}}},10*60*1000).unref();
 
@@ -292,22 +344,36 @@ app.get('/api/student-state',requireStudent,(req,res)=>{
 app.post('/api/application',requireStudent,upload.single('profile'),(req,res)=>{
   const d=load(),u=d.users.find(x=>x.id===req.user.id),course=d.courses.find(c=>c.id===req.body.courseId);
   if(!course)return res.status(404).json({error:'Course not found'});
-  const already=d.applications.find(a=>a.studentId===u.id&&a.courseId===course.id&&['Pending','Payment Pending'].includes(a.status));
+  const email=String(req.body.email||u.email||'').trim();
+  if(!/^\S+@\S+\.\S+$/.test(email))return res.status(400).json({error:'A valid email address is required so the academy can send course and class notifications.'});
+  const already=d.applications.find(a=>a.studentId===u.id&&a.courseId===course.id&&['Pending','Payment Pending','Payment Submitted'].includes(a.status));
   if(already)return res.status(409).json({error:'You already have an application for this course.'});
-  const a={id:id('APP'),studentId:u.id,courseId:course.id,courseTitle:course.title,fullName:req.body.fullName||u.name,phone:u.phone,email:req.body.email||u.email||'',country:req.body.country||'+91',address:req.body.address||'',city:req.body.city||'',qualification:req.body.qualification||'',profilePhoto:req.file?'/uploads/profiles/'+req.file.filename:(u.profilePhoto||''),status:'Payment Pending',createdAt:new Date().toISOString()};
-  d.applications.unshift(a); save(d); res.json({ok:true,application:a});
+  const now=new Date().toISOString();
+  u.name=String(req.body.fullName||u.name).trim(); u.phone=cleanPhone(req.body.country,req.body.phone||u.phone); u.email=email;
+  u.purchaseHistory=Array.isArray(u.purchaseHistory)?u.purchaseHistory:[];
+  const a={id:id('APP'),studentId:u.id,courseId:course.id,courseTitle:course.title,fullName:u.name,phone:u.phone,email,country:req.body.country||'+91',address:req.body.address||'',city:req.body.city||'',qualification:req.body.qualification||'',profilePhoto:req.file?'/uploads/profiles/'+req.file.filename:(u.profilePhoto||''),status:'Payment Pending',createdAt:now};
+  d.applications.unshift(a);
+  u.purchaseHistory.unshift({applicationId:a.id,courseId:course.id,courseTitle:course.title,amount:Number(course.price),fullName:u.name,phone:u.phone,email,address:a.address,city:a.city,qualification:a.qualification,status:'Payment Pending',createdAt:now});
+  save(d);res.json({ok:true,application:a});
 });
 
-app.post('/api/payment',requireStudent,upload.single('screenshot'),(req,res)=>{
+app.post('/api/payment',requireStudent,upload.single('screenshot'),async(req,res)=>{
   const d=load(),course=d.courses.find(c=>c.id===req.body.courseId),u=d.users.find(x=>x.id===req.user.id);
   if(!course||!u)return res.status(404).json({error:'Course or student not found'});
   if(!req.file)return res.status(400).json({error:'Payment screenshot is required.'});
+  if(!String(req.file.mimetype||'').startsWith('image/')){try{fs.unlinkSync(req.file.path)}catch{};return res.status(400).json({error:'Payment screenshot must be an image.'});}
+  if(Number(req.file.size||0)>8*1024*1024){try{fs.unlinkSync(req.file.path)}catch{};return res.status(400).json({error:'Payment screenshot must be 8 MB or smaller.'});}
   const appn=d.applications.find(a=>a.studentId===u.id&&a.courseId===course.id&&a.status==='Payment Pending');
   if(!appn)return res.status(400).json({error:'Submit the course application form first.'});
-  const p={id:id('PAY'),studentId:u.id,studentName:u.name,courseId:course.id,courseTitle:course.title,amount:Number(course.price),utr:String(req.body.utr||''),screenshot:'/uploads/payments/'+req.file.filename,status:'Pending',createdAt:new Date().toISOString()};
-  appn.status='Payment Submitted'; appn.paymentId=p.id; d.payments.unshift(p);
-  d.notifications.unshift({id:id('NOT'),studentId:u.id,type:'payment',title:'Payment submitted',text:`Your payment for ${course.title} is waiting for academy verification.`,createdAt:new Date().toISOString()});
-  save(d); res.json({ok:true,payment:p});
+  const screenshot=imageDataUrl(req.file);if(!screenshot)return res.status(400).json({error:'Could not save the payment screenshot. Please try again.'});
+  const now=new Date().toISOString();
+  const p={id:id('PAY'),studentId:u.id,studentName:u.name,courseId:course.id,courseTitle:course.title,amount:Number(course.price),utr:String(req.body.utr||'').trim(),screenshot,status:'Pending',createdAt:now,fullName:appn.fullName,phone:appn.phone,email:appn.email,address:appn.address,city:appn.city,qualification:appn.qualification,applicationId:appn.id};
+  appn.status='Payment Submitted';appn.paymentId=p.id;d.payments.unshift(p);
+  u.purchaseHistory=Array.isArray(u.purchaseHistory)?u.purchaseHistory:[];const h=u.purchaseHistory.find(x=>x.applicationId===appn.id);
+  if(h){h.paymentId=p.id;h.utr=p.utr;h.screenshot=screenshot;h.status='Payment Submitted';h.paymentSubmittedAt=now;}else u.purchaseHistory.unshift({applicationId:appn.id,paymentId:p.id,courseId:course.id,courseTitle:course.title,amount:p.amount,fullName:u.name,phone:u.phone,email:u.email,address:appn.address,city:appn.city,qualification:appn.qualification,utr:p.utr,screenshot,status:'Payment Submitted',createdAt:now});
+  d.notifications.unshift({id:id('NOT'),studentId:u.id,type:'payment',title:'Payment submitted',text:`Your payment for ${course.title} is waiting for academy verification.`,createdAt:now});
+  const emailResult=await sendStudentEmail(d,u,`Purchase received • ${course.title}`,`<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:24px;color:#12243d"><h2>Hafiz Shahid's Academy</h2><h1>Purchase received</h1><p>We received your course purchase request for <b>${String(course.title).replace(/[<>]/g,'')}</b>.</p><p><b>Amount:</b> ₹${Number(course.price).toLocaleString('en-IN')}<br><b>UTR:</b> ${p.utr||'Not provided'}</p><p>Your payment is currently <b>Pending Verification</b>. Course access will be activated only after the academy verifies the payment.</p></div>`,`Hafiz Shahid's Academy\n\nPurchase received: ${course.title}\nAmount: ₹${Number(course.price).toLocaleString('en-IN')}\nUTR: ${p.utr||'Not provided'}\nStatus: Pending Verification`,'purchase-received');
+  save(d);res.json({ok:true,payment:{...p,screenshot:'[saved securely]'},email:{sent:!!emailResult.ok,reason:emailResult.reason||''}});
 });
 
 app.get('/api/admin/check',requireAdmin,(req,res)=>res.json({ok:true}));
@@ -376,23 +442,20 @@ app.post('/api/admin/student/:id/password',requireAdmin,(req,res)=>{
 
 app.get('/api/admin-state',requireAdmin,(req,res)=>res.json(adminState()));
 
-app.post('/api/admin/payment/:id/approve',requireAdmin,(req,res)=>{
-  const d=load(),p=d.payments.find(x=>x.id===req.params.id); if(!p)return res.status(404).json({error:'Payment not found'});
+app.post('/api/admin/payment/:id/approve',requireAdmin,async(req,res)=>{
+  const d=load(),p=d.payments.find(x=>x.id===req.params.id);if(!p)return res.status(404).json({error:'Payment not found'});
   if(p.status==='Approved')return res.json({ok:true});
-  const u=d.users.find(x=>x.id===p.studentId),c=d.courses.find(x=>x.id===p.courseId); if(!u||!c)return res.status(404).json({error:'Student/course missing'});
-  const start=new Date(); const end=new Date(addDays(start,durationDays(c.validity||c.duration)));
-  u.status='active'; u.enrollments=u.enrollments||[];
-  const existing=u.enrollments.find(e=>e.courseId===c.id);
-  const enrollment={courseId:c.id,courseTitle:c.title,joiningDate:start.toISOString(),endDate:end.toISOString(),status:'active',paymentId:p.id,amount:p.amount};
-  if(existing)Object.assign(existing,enrollment); else u.enrollments.push(enrollment);
-  u.purchased=[...new Set([...(u.purchased||[]),c.id])];
-  p.status='Approved'; p.approvedAt=start.toISOString(); p.joiningDate=start.toISOString(); p.endDate=end.toISOString();
-  const appn=d.applications.find(a=>a.paymentId===p.id); if(appn)appn.status='Approved';
+  const u=d.users.find(x=>x.id===p.studentId),c=d.courses.find(x=>x.id===p.courseId);if(!u||!c)return res.status(404).json({error:'Student/course missing'});
+  const start=new Date(),end=new Date(addDays(start,durationDays(c.validity||c.duration)));
+  u.status='active';u.enrollments=u.enrollments||[];const existing=u.enrollments.find(e=>e.courseId===c.id);const enrollment={courseId:c.id,courseTitle:c.title,joiningDate:start.toISOString(),endDate:end.toISOString(),status:'active',paymentId:p.id,amount:p.amount};if(existing)Object.assign(existing,enrollment);else u.enrollments.push(enrollment);
+  u.purchased=[...new Set([...(u.purchased||[]),c.id])];p.status='Approved';p.approvedAt=start.toISOString();p.joiningDate=start.toISOString();p.endDate=end.toISOString();
+  const appn=d.applications.find(a=>a.paymentId===p.id);if(appn)appn.status='Approved';
+  u.purchaseHistory=Array.isArray(u.purchaseHistory)?u.purchaseHistory:[];const history=u.purchaseHistory.find(x=>x.paymentId===p.id);
   const receipt={id:id('REC'),studentId:u.id,studentName:u.name,courseId:c.id,courseTitle:c.title,amount:p.amount,utr:p.utr,paymentDate:start.toISOString(),joiningDate:start.toISOString(),endDate:end.toISOString(),receiptNo:'HSA-'+Date.now()};
-  d.receipts.unshift(receipt);
-  d.notifications.unshift({id:id('NOT'),studentId:u.id,type:'course',title:'Course unlocked',text:`${c.title} is now active until ${end.toLocaleDateString('en-IN')}. Your receipt is ready.`,createdAt:start.toISOString()});
-  d.notifications.unshift({id:id('MAIL'),studentId:u.id,type:'email',title:'Email notification queued',text:`Payment received for ${c.title}. Receipt ${receipt.receiptNo} generated.`,createdAt:start.toISOString(),channel:'email'});
-  save(d); res.json({ok:true,receipt});
+  if(history){history.status='Approved';history.approvedAt=start.toISOString();history.joiningDate=start.toISOString();history.endDate=end.toISOString();history.receiptNo=receipt.receiptNo;}
+  d.receipts.unshift(receipt);d.notifications.unshift({id:id('NOT'),studentId:u.id,type:'course',title:'Course unlocked',text:`${c.title} is now active until ${end.toLocaleDateString('en-IN')}. Your receipt is ready.`,createdAt:start.toISOString()});
+  const emailResult=await sendStudentEmail(d,u,`Course approved • ${c.title}`,`<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:24px;color:#12243d"><h2>Hafiz Shahid's Academy</h2><h1>Course access activated</h1><p>Your payment for <b>${String(c.title).replace(/[<>]/g,'')}</b> has been verified.</p><p><b>Amount:</b> ₹${Number(p.amount).toLocaleString('en-IN')}<br><b>Joining date:</b> ${start.toLocaleDateString('en-IN')}<br><b>Access until:</b> ${end.toLocaleDateString('en-IN')}<br><b>Receipt:</b> ${receipt.receiptNo}</p><p>You can now open the course from your student dashboard.</p></div>`,`Hafiz Shahid's Academy\n\nCourse access activated\nCourse: ${c.title}\nAmount: ₹${Number(p.amount).toLocaleString('en-IN')}\nJoining date: ${start.toLocaleDateString('en-IN')}\nAccess until: ${end.toLocaleDateString('en-IN')}\nReceipt: ${receipt.receiptNo}`,'course-approved');
+  save(d);res.json({ok:true,receipt,email:{sent:!!emailResult.ok,reason:emailResult.reason||''}});
 });
 app.post('/api/admin/payment/:id/reject',requireAdmin,(req,res)=>{ const d=load(),p=d.payments.find(x=>x.id===req.params.id);if(!p)return res.status(404).json({error:'Payment not found'});p.status='Rejected';p.rejectedAt=new Date().toISOString();const a=d.applications.find(x=>x.paymentId===p.id);if(a)a.status='Payment Pending';d.notifications.unshift({id:id('NOT'),studentId:p.studentId,type:'payment',title:'Payment needs attention',text:'Your payment submission was rejected. Please contact the academy and resubmit.',createdAt:new Date().toISOString()});save(d);res.json({ok:true}); });
 
@@ -411,11 +474,13 @@ app.post('/api/admin/course',requireAdmin,upload.fields([{name:'cover',maxCount:
 app.post('/api/admin/course/:id/edit',requireAdmin,upload.fields([{name:'cover',maxCount:1},{name:'syllabusFile',maxCount:1}]),(req,res)=>{const d=load(),c=d.courses.find(x=>x.id===req.params.id);if(!c)return res.status(404).json({error:'Course not found'});for(const k of ['title','category','description','level','duration','startDate'])if(req.body[k]!==undefined)c[k]=req.body[k];if(req.body.price!==undefined)c.price=Number(req.body.price);if(req.body.oldPrice!==undefined)c.oldPrice=Number(req.body.oldPrice);if(req.body.validity!==undefined)c.validity=req.body.validity;if(req.files?.cover?.[0]){if(typeof c.image==='string'&&c.image.startsWith('/uploads/'))removeUploadFile(c.image);const coverData=imageDataUrl(req.files.cover[0]);if(coverData)c.image=coverData;}else if(req.body.image)c.image=req.body.image;if(req.files?.syllabusFile?.[0])c.syllabusUrl='/uploads/materials/'+req.files.syllabusFile[0].filename;else if(req.body.syllabusUrl!==undefined)c.syllabusUrl=req.body.syllabusUrl;save(d);res.json({ok:true,course:c});});
 app.post('/api/admin/course/:id/delete',requireAdmin,(req,res)=>{const d=load();d.courses=d.courses.filter(c=>c.id!==req.params.id);save(d);res.json({ok:true});});
 
-app.post('/api/admin/lesson',requireAdmin,upload.single('file'),(req,res)=>{
+app.post('/api/admin/lesson',requireAdmin,upload.single('file'),async(req,res)=>{
  const d=load(),c=d.courses.find(x=>x.id===req.body.courseId);if(!c)return res.status(404).json({error:'Course not found'});
  let type=req.body.type||'youtube',video=req.body.video||'';if(req.file){type='upload';video='/uploads/videos/'+req.file.filename;}
+ if(video&&type==='youtube'&&!/^https?:\/\//i.test(video))return res.status(400).json({error:'Please enter a valid YouTube URL.'});
  const l={id:id('LESSON'),title:String(req.body.title||'').trim(),type,video,free:req.body.free==='true'||req.body.free===true,description:req.body.description||'',createdAt:new Date().toISOString()};
- if(!l.title)return res.status(400).json({error:'Lesson title is required.'}); c.lessons=c.lessons||[];c.lessons.push(l);save(d);res.json({ok:true,lesson:l});
+ if(!l.title)return res.status(400).json({error:'Lesson title is required.'});if(!l.video)return res.status(400).json({error:'Add a YouTube link or upload a video.'});
+ c.lessons=c.lessons||[];c.lessons.push(l);const mail=await sendCourseClassEmails(d,c,{title:l.title,kind:l.type==='upload'?'New recorded class':'New YouTube class',recordingUrl:l.video,description:l.description||'A new class is now available in your purchased course.'});save(d);res.json({ok:true,lesson:l,email:mail});
 });
 app.post('/api/admin/lesson/:id/edit',requireAdmin,upload.single('file'),(req,res)=>{
  const d=load();let found=null;for(const c of d.courses){const l=(c.lessons||[]).find(x=>x.id===req.params.id);if(l){found={c,l};break;}}
@@ -433,12 +498,12 @@ app.post('/api/admin/assignment/:id/edit',requireAdmin,(req,res)=>{const d=load(
 app.post('/api/admin/assignment/:id/delete',requireAdmin,(req,res)=>{const d=load(),i=d.assignments.findIndex(x=>x.id===req.params.id);if(i<0)return res.status(404).json({error:'Assignment not found'});d.assignments.splice(i,1);d.submissions=d.submissions.filter(s=>s.assignmentId!==req.params.id);save(d);res.json({ok:true});});
 app.post('/api/assignment/submit',requireStudent,upload.single('file'),(req,res)=>{const d=load(),a=d.assignments.find(x=>x.id===req.body.assignmentId);if(!a)return res.status(404).json({error:'Assignment not found'});if(!isActiveEnrollment(d,req.user,a.courseId))return res.status(403).json({error:'Course access is inactive.'});const old=d.submissions.find(x=>x.assignmentId===a.id&&x.studentId===req.user.id);const item={id:old?old.id:id('SUB'),assignmentId:a.id,studentId:req.user.id,answer:req.body.answer||'',file:req.file?'/uploads/assignments/'+req.file.filename:(old?.file||''),status:'Submitted',submittedAt:new Date().toISOString(),score:null,feedback:''};if(old)Object.assign(old,item);else d.submissions.push(item);save(d);res.json({ok:true,submission:item});});
 app.post('/api/admin/submission/:id/grade',requireAdmin,(req,res)=>{const d=load(),s=d.submissions.find(x=>x.id===req.params.id);if(!s)return res.status(404).json({error:'Submission not found'});s.score=Number(req.body.score||0);s.feedback=req.body.feedback||'';s.status='Graded';d.notifications.unshift({id:id('NOT'),studentId:s.studentId,type:'assignment',title:'Assignment graded',text:`Your assignment has been graded: ${s.score} points.`,createdAt:new Date().toISOString()});save(d);res.json({ok:true});});
-app.post('/api/admin/live',requireAdmin,(req,res)=>{const d=load();const l={id:id('LIVE'),courseId:req.body.courseId,title:req.body.title,date:req.body.date,time:req.body.time,zoom:req.body.zoom,recording:req.body.recording||'',status:'Upcoming'};d.liveClasses.unshift(l);save(d);res.json({ok:true,live:l});});
+app.post('/api/admin/live',requireAdmin,async(req,res)=>{const d=load(),c=d.courses.find(x=>x.id===req.body.courseId);if(!c)return res.status(404).json({error:'Course not found'});const zoom=String(req.body.zoom||'').trim();if(!/^https?:\/\//i.test(zoom))return res.status(400).json({error:'Please enter a valid Zoom/meeting URL.'});const l={id:id('LIVE'),courseId:req.body.courseId,title:String(req.body.title||'').trim(),date:req.body.date,time:req.body.time,zoom,recording:req.body.recording||'',status:'Upcoming',createdAt:new Date().toISOString()};if(!l.title)return res.status(400).json({error:'Class title is required.'});d.liveClasses.unshift(l);const mail=await sendCourseClassEmails(d,c,{title:l.title,kind:'Live class scheduled',joinUrl:l.zoom,description:`Your live class is scheduled for ${l.date} at ${l.time}.`});save(d);res.json({ok:true,live:l,email:mail});});
 app.post('/api/admin/live/:id/edit',requireAdmin,(req,res)=>{const d=load(),l=d.liveClasses.find(x=>x.id===req.params.id);if(!l)return res.status(404).json({error:'Live class not found'});for(const k of ['courseId','title','date','time','zoom','recording','status'])if(req.body[k]!==undefined)l[k]=req.body[k];save(d);res.json({ok:true,live:l});});
 app.post('/api/admin/live/:id/delete',requireAdmin,(req,res)=>{const d=load(),i=d.liveClasses.findIndex(x=>x.id===req.params.id);if(i<0)return res.status(404).json({error:'Live class not found'});d.liveClasses.splice(i,1);save(d);res.json({ok:true});});
 app.post('/api/admin/announcement',requireAdmin,(req,res)=>{const d=load();const a={id:id('ANN'),title:req.body.title,text:req.body.text,createdAt:new Date().toISOString()};d.announcements.unshift(a);save(d);res.json({ok:true,announcement:a});});
-app.post('/api/admin/post',requireAdmin,upload.single('imageFile'),(req,res)=>{const d=load();const p={id:id('POST'),title:req.body.title,text:req.body.text||'',image:req.file?'/uploads/materials/'+req.file.filename:(req.body.image||''),createdAt:new Date().toISOString()};d.posts.unshift(p);save(d);res.json({ok:true,post:p});});
-app.post('/api/admin/post/:id/edit',requireAdmin,upload.single('imageFile'),(req,res)=>{const d=load(),p=d.posts.find(x=>x.id===req.params.id);if(!p)return res.status(404).json({error:'Post not found'});if(req.body.title!==undefined)p.title=req.body.title;if(req.body.text!==undefined)p.text=req.body.text;if(req.file){removeUploadFile(p.image);p.image='/uploads/materials/'+req.file.filename;}else if(req.body.image!==undefined)p.image=req.body.image;save(d);res.json({ok:true,post:p});});
+app.post('/api/admin/post',requireAdmin,upload.single('imageFile'),(req,res)=>{const d=load();let image=req.body.image||'';if(req.file){if(!String(req.file.mimetype||'').startsWith('image/')){try{fs.unlinkSync(req.file.path)}catch{};return res.status(400).json({error:'Post image must be an image.'});}if(Number(req.file.size||0)>6*1024*1024){try{fs.unlinkSync(req.file.path)}catch{};return res.status(400).json({error:'Post image must be 6 MB or smaller.'});}image=imageDataUrl(req.file);if(!image)return res.status(400).json({error:'Could not save the post image.'});}const p={id:id('POST'),title:String(req.body.title||'').trim(),text:req.body.text||'',image,createdAt:new Date().toISOString()};if(!p.title)return res.status(400).json({error:'Post title is required.'});d.posts.unshift(p);save(d);res.json({ok:true,post:p});});
+app.post('/api/admin/post/:id/edit',requireAdmin,upload.single('imageFile'),(req,res)=>{const d=load(),p=d.posts.find(x=>x.id===req.params.id);if(!p)return res.status(404).json({error:'Post not found'});if(req.body.title!==undefined)p.title=req.body.title;if(req.body.text!==undefined)p.text=req.body.text;if(req.file){if(!String(req.file.mimetype||'').startsWith('image/')){try{fs.unlinkSync(req.file.path)}catch{};return res.status(400).json({error:'Post image must be an image.'});}if(Number(req.file.size||0)>6*1024*1024){try{fs.unlinkSync(req.file.path)}catch{};return res.status(400).json({error:'Post image must be 6 MB or smaller.'});}const data=imageDataUrl(req.file);if(!data)return res.status(400).json({error:'Could not save the post image.'});p.image=data;}else if(req.body.image!==undefined)p.image=req.body.image;save(d);res.json({ok:true,post:p});});
 app.post('/api/admin/post/:id/delete',requireAdmin,(req,res)=>{const d=load(),i=d.posts.findIndex(x=>x.id===req.params.id);if(i<0)return res.status(404).json({error:'Post not found'});removeUploadFile(d.posts[i].image);d.posts.splice(i,1);save(d);res.json({ok:true});});
 app.post('/api/admin/branding',requireAdmin,upload.fields([{name:'hero',maxCount:1},{name:'logo',maxCount:1}]),(req,res)=>{const d=load();d.settings=d.settings||{};for(const [field,files] of Object.entries(req.files||{})){if(files[0])d.settings[field==='hero'?'heroImage':'logo']='/uploads/branding/'+files[0].filename;}if(req.body.academyName)d.settings.academyName=req.body.academyName;if(req.body.tagline)d.settings.tagline=req.body.tagline;save(d);res.json({ok:true,settings:d.settings});});
 app.post('/api/admin/settings',requireAdmin,(req,res)=>{const d=load();d.settings={...d.settings,...req.body};save(d);res.json({ok:true,settings:d.settings});});
@@ -457,6 +522,7 @@ app.get('*',(req,res)=>res.sendFile(path.join(ROOT,'index.html')));
 async function start(){
   try {
     const store = await initStore();
+    const d=load(); if(hydrateDurableImages(d)) await save(d);
     app.listen(PORT,'0.0.0.0',()=>console.log(`Hafiz Shahid's Academy running on port ${PORT} (${store.mode} storage)`));
   } catch (err) {
     console.error('Startup failed:', err);

@@ -20,6 +20,7 @@ function normalizeUsers(d) {
     u.enrollments = Array.isArray(u.enrollments) ? u.enrollments : [];
     u.purchased = Array.isArray(u.purchased) ? u.purchased : [];
     u.progress = u.progress || {};
+    u.purchaseHistory = Array.isArray(u.purchaseHistory) ? u.purchaseHistory : [];
     if (u.role === 'student') {
       let num = String(u.id || '').match(/^HSA-(\d{3,})$/i);
       if (num) { used.add(Number(num[1])); }
