@@ -17,35 +17,8 @@
 
 <body>
     <div id="toast"></div>
-    <section id="loginGate" class="gate">
-  <div class="gate-left">
-    <div class="gate-brand"><img class="academy-logo big-logo" src="/academy-logo.png" alt="Hafiz Shahid's Academy"><b>HAFIZ SHAHID'S<br>ACADEMY</b></div>
-    <img id="loginPhoto" src="/shahid.jpg" alt="Hafiz Shahid">
-    <div class="quote">“Knowledge is the key to a better future.”</div><small>Learn • Practice • Grow</small>
-  </div>
-  <div class="gate-right">
-    <div class="eyebrow">SECURE STUDENT LOGIN</div>
-    <h1>Welcome <span>back.</span></h1>
-    <p class="lead">Enter your name. If you are new, the academy will automatically create your Student ID. Then set your password and enter your dashboard.</p>
-    <form id="nameForm" class="form" novalidate>
-      <label>Your full name</label>
-      <input id="studentName" autocomplete="name" placeholder="Enter your full name" required>
-      <div id="lastStudentSuggestion" class="hidden suggestion-wrap"></div>
-      <button class="primary">Continue →</button>
-    </form>
-    <form id="studentLoginForm" class="form hidden" novalidate>
-      <div class="student-id-card"><span>Your Student ID</span><strong id="studentIdDisplay">HSA-001</strong></div>
-      <label id="studentPasswordLabel">Password</label>
-      <input id="studentId" type="hidden">
-      <input id="registrationToken" type="hidden">
-      <input id="studentPassword" type="password" autocomplete="new-password" placeholder="Create your password" required>
-      <button class="primary" id="studentSubmitButton">Create Account & Enter →</button>
-      <button type="button" class="outline" onclick="backToName()">Use another name</button>
-    </form>
-    <p class="small">Your Student ID is permanent. Keep your password private. No OTP is required.</p>
-    <p><a href="#" onclick="showAdminLogin();return false">Owner / Admin login</a></p>
-  </div>
-</section>
+    <section id="homeLanding" class="landing-screen"><div class="landing-bg"></div><header class="landing-nav"><a class="brand landing-brand" href="#"><span class="mark"><img src="/academy-mark.png" alt="Academy"></span><span>Hafiz Shahid's<br><b>Academy</b></span></a><button class="landing-login-btn" onclick="openLogin()">Login <span>→</span></button></header><main class="landing-main"><div class="landing-copy"><div class="eyebrow">LEARN • PRACTICE • GROW</div><h1>Your learning journey,<br><span>beautifully connected.</span></h1><p>Explore courses, recorded classes, live learning, assignments, certificates and direct support — all from one academy platform.</p><div class="landing-actions"><button class="primary landing-cta" onclick="openLogin()">Enter Academy <span>→</span></button><span class="landing-note">Secure email OTP login</span></div></div><div class="landing-visual"><div class="landing-glow"></div><div class="landing-card main"><img src="/academy-logo.png" alt="Hafiz Shahid's Academy"><b>Hafiz Shahid's Academy</b><span>Knowledge • Character • Excellence</span></div><div class="floating-card fc1">LIVE CLASSES <b>●</b></div><div class="floating-card fc2">CERTIFICATES <b>✓</b></div></div></main><div class="landing-features"><span>Recorded Classes</span><span>Live / Zoom</span><span>Assignments</span><span>Study Material</span><span>Certificates</span><span>Student Support</span></div></section>
+    <section id="loginGate" class="gate hidden login-overlay"><button class="login-back" onclick="closeLogin()">← Back to Home</button><div class="gate-left student-login-side"><div class="gate-brand"><img class="academy-logo big-logo" src="/academy-logo.png" alt="Hafiz Shahid's Academy"><b>HAFIZ SHAHID'S<br>ACADEMY</b></div><img id="loginPhoto" src="/shahid.jpg" alt="Hafiz Shahid"><div class="quote">“Knowledge is the key to a better future.”</div><small>Learn • Practice • Grow</small><div class="mini-admin-box"><div class="eyebrow">OWNER ACCESS</div><h3>Admin Login</h3><form id="adminQuickForm" class="form"><input id="quickAdminPassword" type="password" placeholder="Admin password" required><button class="primary">Open Admin Panel →</button></form></div></div><div class="gate-right login-panel-right"><div class="eyebrow">STUDENT ACCESS</div><h1>Welcome <span>back.</span></h1><p class="lead">Login securely with the email address registered with the academy.</p><form id="nameForm" class="form" novalidate><label>Full name</label><input id="studentName" autocomplete="name" placeholder="Enter your full name" required><label>Email address</label><input id="studentEmail" type="email" autocomplete="email" placeholder="you@example.com" required><div id="lastStudentSuggestion" class="hidden suggestion-wrap"></div><button class="primary">Send OTP →</button></form><form id="studentLoginForm" class="form hidden" novalidate><div class="student-id-card"><span>Your Student ID</span><strong id="studentIdDisplay">HSA-001</strong></div><label>Enter OTP</label><input id="studentOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="Enter OTP that we sent to your email" required><input id="otpChallenge" type="hidden"><button class="primary" id="studentSubmitButton">Verify OTP & Enter →</button><button type="button" class="outline" onclick="resendStudentOtp()">Resend OTP</button><button type="button" class="outline" onclick="backToName()">Use another email</button></form><p class="small login-security">Your OTP is valid for 10 minutes. Never share it with anyone.</p><p class="admin-link"><span>Academy owner?</span> <a href="/admin.html">Admin Login</a></p></div></section>
     <section id="app" class="hidden">
         <header class="topbar"><a class="brand" href="#" onclick="go('home');return false"><span class="mark logo-mark" id="brandMark"><img src="/academy-mark.png" alt="Academy logo"></span><span>Hafiz Shahid's<br><b>Academy</b></span></a><button
                 class="mobile-menu" onclick="toggleSidebar()">☰</button>
@@ -61,8 +34,7 @@
                     onclick="go('materials')" data-nav="materials">▤ Study Material</button><button
                     onclick="go('downloads')" data-nav="downloads">⇩ Downloads</button><button
                     onclick="go('assignments')" data-nav="assignments">✓ Assignments</button><button
-                    onclick="go('live')" data-nav="live">◉ Live Classes</button><button onclick="go('certificates')"
-                    data-nav="certificates">◇ My Certificate</button>
+                    onclick="go('live')" data-nav="live">◉ Live Classes</button><button onclick="go('certificates')" data-nav="certificates">◇ My Certificate</button><button onclick="go('doubts')" data-nav="doubts">? Ask Doubt</button>
                 <div class="side-title">ACCOUNT</div><button onclick="go('profile')" data-nav="profile">◯ About
                     Me</button><button onclick="go('settings')" data-nav="settings">⚙ Settings</button><button
                     onclick="logout()">↪ Logout</button>
