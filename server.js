@@ -9,7 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 const ROOT = __dirname;
 const UPLOAD_ROOT = path.join(ROOT, 'uploads');
-for (const f of ['videos','materials','assignments','payments','profiles','covers','branding','thumbnails']) fs.mkdirSync(path.join(UPLOAD_ROOT,f), {recursive:true});
+for (const f of ['videos','materials','assignments','payments','profiles','covers','branding']) fs.mkdirSync(path.join(UPLOAD_ROOT,f), {recursive:true});
 
 // Brevo transactional email integration. The API key stays server-side and is never sent to the browser.
 const BREVO_ENDPOINT='https://api.brevo.com/v3/smtp/email';
@@ -109,6 +109,8 @@ function findStudentByName(d, name) {
 
 function publicState(){
   const d=load();
+  d.settings=d.settings||{};
+  if(!d.settings.siteVersion) d.settings.siteVersion='1.0.0';
   return {settings:d.settings,courses:d.courses,posts:d.posts,announcements:d.announcements};
 }
 function studentState(u){
@@ -118,20 +120,20 @@ function studentState(u){
   const mine=(owner || fullAccess) ? d.courses.map(c=>({courseId:c.id,courseTitle:c.title,joiningDate:new Date().toISOString(),endDate:'2099-12-31T23:59:59.000Z',status:'active',active:true})) : (u.enrollments||[]).filter(e=>e.status==='active').map(e=>({...e,active:new Date(e.endDate)>=new Date()}));
   const allowed=(owner || fullAccess) ? ()=>true : (cid)=>mine.some(e=>e.courseId===cid && e.active);
   const safeUser=sanitizeUser(u); if(owner||fullAccess){safeUser.enrollments=mine;safeUser.purchased=d.courses.map(c=>c.id);} else {safeUser.enrollments=mine;}
-  return {settings:d.settings,courses:d.courses,doubts:(d.doubts||[]).filter(x=>x.studentId===u.id),comments:(d.comments||[]).filter(x=>x.studentId===u.id),materials:d.materials.filter(m=>allowed(m.courseId)),assignments:d.assignments.filter(a=>allowed(a.courseId)),submissions:d.submissions.filter(s=>s.studentId===u.id),liveClasses:d.liveClasses.filter(l=>allowed(l.courseId)),announcements:d.announcements,posts:d.posts,notifications:d.notifications.filter(n=>n.studentId===u.id),receipts:d.receipts.filter(r=>r.studentId===u.id),user:safeUser};
+  return {settings:d.settings,courses:d.courses,materials:d.materials.filter(m=>allowed(m.courseId)),assignments:d.assignments.filter(a=>allowed(a.courseId)),submissions:d.submissions.filter(s=>s.studentId===u.id),liveClasses:d.liveClasses.filter(l=>allowed(l.courseId)),announcements:d.announcements,posts:d.posts,notifications:d.notifications.filter(n=>n.studentId===u.id),receipts:d.receipts.filter(r=>r.studentId===u.id),user:safeUser};
 }
 function adminState(){
   const d=load();
-  return {settings:d.settings,doubts:d.doubts||[],users:d.users.map(sanitizeUser),courses:d.courses,payments:d.payments,applications:d.applications,materials:d.materials,assignments:d.assignments,submissions:d.submissions,liveClasses:d.liveClasses,announcements:d.announcements,posts:d.posts,notifications:d.notifications,receipts:d.receipts,certificates:d.certificates,teachers:d.teachers.map(sanitizeUser),messageLogs:d.messageLogs};
+  return {settings:d.settings,users:d.users.map(sanitizeUser),courses:d.courses,payments:d.payments,applications:d.applications,materials:d.materials,assignments:d.assignments,submissions:d.submissions,liveClasses:d.liveClasses,announcements:d.announcements,posts:d.posts,notifications:d.notifications,receipts:d.receipts,certificates:d.certificates,teachers:d.teachers.map(sanitizeUser),messageLogs:d.messageLogs};
 }
 function requireStudent(req,res,next){ const token=req.headers['x-student-token']; const d=load(); const u=d.users.find(x=>x.sessionToken===token&&(x.role==='student'||x.role==='superadmin')); if(!u)return res.status(401).json({error:'Session expired. Please login again.'}); req.user=u; next(); }
 function requireAdmin(req,res,next){ const token=req.headers['x-admin-token']; if(!adminSessions.has(token))return res.status(401).json({error:'Admin login required.'}); req.admin=true; next(); }
 
 const adminSessions=new Set();
-const pendingEmailOtps=new Map();
 const studentSessions=new Set();
 const pendingOtps=new Map();
 const pendingStudentRegistrations=new Map();
+const emailOtpSessions=new Map();
 const storage=multer.diskStorage({
  destination:(req,file,cb)=>{
    // Multipart fields are not guaranteed to be parsed before the file field.
@@ -139,7 +141,7 @@ const storage=multer.diskStorage({
    const routeHint=String(req.originalUrl||'');
    const byField={cover:'covers',syllabusFile:'materials',file:(routeHint.includes('/lesson')||req.body.uploadType==='videos'?'videos':'materials'),hero:'branding',logo:'branding',photo:'profiles',screenshot:'payments',imageFile:'materials'};
    let type=byField[file.fieldname] || req.body.uploadType || 'materials';
-   if(!['videos','materials','assignments','payments','profiles','covers','branding','thumbnails'].includes(type)) type='materials';
+   if(!['videos','materials','assignments','payments','profiles','covers','branding'].includes(type)) type='materials';
    cb(null,path.join(UPLOAD_ROOT,type));
  },
  filename:(req,file,cb)=>cb(null,`${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${path.basename(file.originalname).replace(/[^a-zA-Z0-9._-]/g,'_')}`)
@@ -180,6 +182,7 @@ app.get('/uploads/covers/:file',(req,res,next)=>{
 app.use('/uploads', express.static(UPLOAD_ROOT, {fallthrough:false, maxAge:'1h'}));
 // Always make the public student website the root page. Admin remains /admin.html.
 app.get('/',(req,res)=>res.sendFile(path.join(ROOT,'index.html')));
+app.use((req,res,next)=>{ if(req.path==='/' || /\.(html|js|css|webmanifest)$/.test(req.path)) res.setHeader('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate'); next(); });
 app.use(express.static(ROOT));
 
 // Cloudinary direct-video upload configuration. The browser uploads large videos
@@ -225,7 +228,7 @@ app.post('/api/admin/lesson-uploaded-edit',requireAdmin,async(req,res)=>{
   for(const c of d.courses){const l=(c.lessons||[]).find(x=>x.id===req.body.id);if(l){found={c,l};break;}}
   if(!found)return res.status(404).json({error:'Lesson not found'});
   const {c,l}=found;
-  for(const k of ['title','description'])if(req.body[k]!==undefined)l[k]=req.body[k]; if(req.body.thumbnail!==undefined)l.thumbnail=String(req.body.thumbnail||'');
+  for(const k of ['title','description'])if(req.body[k]!==undefined)l[k]=req.body[k];
   if(req.body.video){removeUploadFile(l.video);l.type='upload';l.video=String(req.body.video);}
   l.free=String(req.body.free)==='true';
   const mail=req.body.video?await sendCourseClassEmails(d,c,{title:l.title,kind:'Recorded class updated',recordingUrl:l.video,description:l.description||'A recorded class has been updated in your course.'}):{sent:0,skipped:0,total:0};
@@ -234,7 +237,7 @@ app.post('/api/admin/lesson-uploaded-edit',requireAdmin,async(req,res)=>{
 app.post('/api/admin/lesson-uploaded',requireAdmin,async(req,res)=>{
   const d=load(),c=d.courses.find(x=>x.id===req.body.courseId);
   if(!c)return res.status(404).json({error:'Course not found'});
-  const l={id:id('LESSON'),title:String(req.body.title||'').trim(),type:'upload',video:String(req.body.video||''),thumbnail:String(req.body.thumbnail||''),description:req.body.description||'',free:String(req.body.free)==='true'};
+  const l={id:id('LESSON'),title:String(req.body.title||'').trim(),type:'upload',video:String(req.body.video||''),description:req.body.description||'',free:String(req.body.free)==='true'};
   if(!l.title||!l.video)return res.status(400).json({error:'Lesson title and uploaded video are required.'});
   c.lessons=c.lessons||[];c.lessons.push(l);const mail=await sendCourseClassEmails(d,c,{title:l.title,kind:'New recorded class',recordingUrl:l.video,description:l.description||'A new recorded class is now available in your purchased course.'});await save(d);res.json({ok:true,lesson:l,email:mail});
 });
@@ -243,30 +246,96 @@ setInterval(()=>{const cutoff=Date.now()-30*60*1000;for(const [k,v] of videoUplo
 app.get('/api/public-state',(req,res)=>res.json(publicState()));
 app.get('/api/health',(req,res)=>res.json({ok:true,academy:"Hafiz Shahid's Academy",mode:process.env.DATABASE_URL?'postgres':'local',time:new Date().toISOString()}));
 
-// Free-demo OTP policy: without an SMS provider, OTP delivery cannot be truly private.
-// The first two student accounts use the requested demo codes; later accounts get a random code
-// stored only in memory for the 15-minute request window. Replace this with an SMS provider for production.
-function demoStudentOtp(d, key){
-  const existing=d.users.find(u=>u.phone===key);
-  if(existing?.demoOtp) return String(existing.demoOtp);
-  const count=d.users.filter(u=>u.role==='student').length;
-  if(count===0) return '123456';
-  if(count===1) return '6789';
-  return String(crypto.randomInt(100000,1000000));
-}
-function validOtpFormat(otp){ return /^\\d{4,6}$/.test(String(otp)); }
+// Email OTP login. OTPs are short-lived and kept server-side only. Brevo credentials remain server-side.
+function validEmail(v){return /^\S+@\S+\.\S+$/.test(String(v||'').trim());}
+app.post('/api/auth/request-otp',async(req,res)=>{
+  const d=load(); const name=String(req.body.name||'').trim().replace(/\s+/g,' '); const email=String(req.body.email||'').trim().toLowerCase();
+  if(name.length<2)return res.status(400).json({error:'Please enter your full name.'});
+  if(!validEmail(email))return res.status(400).json({error:'Please enter a valid email address.'});
+  let u=findStudentByName(d,name)[0];
+  if(u && u.status==='deleted')return res.status(404).json({error:'This student account is no longer active.'});
+  if(!u){u={id:nextStudentId(d),name,phone:'',email,role:'student',status:'active',purchased:[],enrollments:[],progress:{},createdAt:new Date().toISOString()};d.users.push(u);}
+  u.email=email;
+  const otp=String(crypto.randomInt(100000,1000000)); const session=crypto.randomBytes(32).toString('hex');
+  emailOtpSessions.set(session,{userId:u.id,email,otp,expiresAt:Date.now()+10*60*1000,attempts:0});
+  const safeName=name.replace(/[<>]/g,'');
+  const result=await sendBrevoEmail({toEmail:email,toName:name,subject:`Your login OTP • ${safeName}`,htmlContent:`<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:24px;color:#12243d"><h2>Hafiz Shahid's Academy</h2><p>Your one-time login verification code is:</p><div style="font-size:34px;font-weight:900;letter-spacing:8px;padding:18px;background:#f1f5ff;border-radius:14px;text-align:center">${otp}</div><p>This OTP expires in 10 minutes. Never share it with anyone.</p><p><b>Student ID:</b> ${u.id}</p></div>`,textContent:`Hafiz Shahid's Academy\n\nYour login OTP is ${otp}.\nStudent ID: ${u.id}\nThis OTP expires in 10 minutes.`});
+  await logBrevoEmail(d,{studentId:u.id,toEmail:email,toName:name,subject:`Your login OTP • ${safeName}`,text:`Login OTP sent to ${email} for ${u.id}.`,result,type:'login-otp'});
+  const ownerEmail=brevoConfig().fromEmail;
+  if(result.ok && ownerEmail && ownerEmail.toLowerCase()!==email) await sendBrevoEmail({toEmail:ownerEmail,toName:'Academy Owner',subject:`Student login • ${u.id}`,htmlContent:`<p>A student login was requested.</p><p><b>Student:</b> ${safeName}<br><b>Student ID:</b> ${u.id}<br><b>Email:</b> ${email}</p>`,textContent:`Student login requested\nStudent: ${name}\nStudent ID: ${u.id}\nEmail: ${email}`});
+  save(d); if(!result.ok)return res.status(503).json({error:'OTP could not be sent. Please check Brevo configuration.'});
+  res.json({ok:true,studentId:u.id,expiresIn:600});
+});
+app.post('/api/auth/verify-otp',(req,res)=>{
+  const d=load(); const studentId=String(req.body.studentId||'').trim().toUpperCase(); const email=String(req.body.email||'').trim().toLowerCase(); const otp=String(req.body.otp||'').trim();
+  let key,entry; for(const [k,v] of emailOtpSessions.entries()) if(v.userId===studentId&&v.email===email){key=k;entry=v;break;}
+  if(!entry||entry.expiresAt<Date.now()){if(key)emailOtpSessions.delete(key);return res.status(401).json({error:'OTP expired. Please request a new OTP.'});}
+  if(entry.attempts>=5)return res.status(429).json({error:'Too many incorrect attempts. Please request a new OTP.'});
+  if(entry.otp!==otp){entry.attempts++;return res.status(401).json({error:'Invalid OTP. Please check your email and try again.'});}
+  const u=d.users.find(x=>x.role==='student'&&String(x.id).toUpperCase()===studentId); if(!u)return res.status(404).json({error:'Student account not found.'});
+  u.email=email; u.sessionToken=crypto.randomBytes(32).toString('hex'); save(d); emailOtpSessions.delete(key); res.json({ok:true,token:u.sessionToken,user:sanitizeUser(u)});
+});
 
-// Email OTP student authentication.
-function makeOtp(){return String(crypto.randomInt(100000,1000000));}
-function otpHtml(name,otp){return `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:28px;color:#14213d"><div style="padding:22px;border-radius:20px;background:linear-gradient(135deg,#eef2ff,#faf5ff,#ecfeff)"><div style="font-weight:800;color:#5b21b6;letter-spacing:1px">HAFIZ SHAHID'S ACADEMY</div><h1>Your login OTP</h1><p>Hello ${String(name||'Student').replace(/[<>]/g,'')}, use this one-time code to enter your student dashboard:</p><div style="font-size:34px;letter-spacing:8px;font-weight:900;background:#fff;border-radius:16px;padding:18px;text-align:center">${otp}</div><p style="color:#667085">This OTP expires in 10 minutes. Do not share it.</p></div></div>`;}
-app.post('/api/auth/request-student-otp',async(req,res)=>{try{const d=load(),name=String(req.body.name||'').trim().replace(/\s+/g,' '),email=String(req.body.email||'').trim().toLowerCase();if(name.length<2)return res.status(400).json({error:'Please enter your full name.'});if(!/^\S+@\S+\.\S+$/.test(email))return res.status(400).json({error:'Please enter a valid email address.'});const matches=findStudentByName(d,name);if(matches.length>1)return res.status(409).json({error:'More than one student has this name. Please contact the academy.'});let u=matches[0];if(u){if(u.status==='deleted')return res.status(404).json({error:'This student account is no longer active.'});if(u.email&&u.email.toLowerCase()!==email)return res.status(401).json({error:'This name is already registered with another email address.'});u.email=email;}else{u={id:nextStudentId(d),name,email,phone:'',role:'student',status:'active',purchased:[],enrollments:[],progress:{},purchaseHistory:[],createdAt:new Date().toISOString()};d.users.push(u);}const otp=makeOtp(),challenge=crypto.randomBytes(20).toString('hex');pendingEmailOtps.set(challenge,{userId:u.id,otp,expiresAt:Date.now()+10*60*1000,attempts:0,email});const mail=await sendStudentEmail(d,u,"Your Hafiz Shahid's Academy login OTP",otpHtml(u.name,otp),`Hafiz Shahid's Academy\n\nYour login OTP is: ${otp}\nIt expires in 10 minutes.`,'login-otp');save(d);if(!mail.ok)return res.status(502).json({error:'OTP could not be sent. Please check Brevo configuration and try again.'});const ownerEmail=String(process.env.SUPER_ADMIN_EMAIL||brevoConfig().fromEmail||'').trim();if(ownerEmail&&ownerEmail.toLowerCase()!==email)await sendBrevoEmail({toEmail:ownerEmail,toName:'Academy Owner',subject:'Student login activity',htmlContent:`<div style="font-family:Arial;padding:20px"><h2>Hafiz Shahid's Academy</h2><p><b>Student:</b> ${String(u.name).replace(/[<>]/g,'')}</p><p><b>Email:</b> ${email}</p><p><b>Student ID:</b> ${u.id}</p><p>A login OTP was requested.</p></div>`,textContent:`Student login activity\nName: ${u.name}\nEmail: ${email}\nStudent ID: ${u.id}`});res.json({ok:true,challenge,studentId:u.id,name:u.name,existing:!!matches[0],message:'OTP sent to your email.'});}catch(e){res.status(500).json({error:e?.message||'Unable to send OTP.'});}});
-app.post('/api/auth/verify-student-otp',(req,res)=>{const challenge=String(req.body.challenge||''),otp=String(req.body.otp||'').trim(),entry=pendingEmailOtps.get(challenge);if(!entry||entry.expiresAt<Date.now()){pendingEmailOtps.delete(challenge);return res.status(400).json({error:'OTP expired. Please request a new OTP.'});}if(!/^\d{6}$/.test(otp))return res.status(400).json({error:'Enter the 6-digit OTP sent to your email.'});if(entry.attempts>=5){pendingEmailOtps.delete(challenge);return res.status(429).json({error:'Too many incorrect attempts. Please request a new OTP.'});}if(otp!==entry.otp){entry.attempts++;return res.status(401).json({error:'Incorrect OTP. Please try again.'});}const d=load(),u=d.users.find(x=>x.id===entry.userId&&x.role==='student');if(!u)return res.status(404).json({error:'Student account not found.'});u.email=entry.email;u.sessionToken=crypto.randomBytes(32).toString('hex');u.lastLoginAt=new Date().toISOString();pendingEmailOtps.delete(challenge);save(d);res.json({ok:true,token:u.sessionToken,user:sanitizeUser(u)});});
-app.post('/api/auth/request-otp',(req,res)=>res.status(410).json({error:'Please use email OTP student login.'}));
-app.post('/api/auth/verify-otp',(req,res)=>res.status(410).json({error:'Please use email OTP student login.'}));
+app.post('/api/auth/student-id',(req,res)=>{
+  const d=load();
+  const name=String(req.body.name||'').trim().replace(/\s+/g,' ');
+  if(name.length<2) return res.status(400).json({error:'Please enter your full name.'});
+  const matches=findStudentByName(d,name);
+  if(matches.length>1) return res.status(409).json({error:'More than one student has this name. Please contact the academy.'});
+  if(matches.length===1){
+    const u=matches[0];
+    if(u.status==='deleted') return res.status(404).json({error:'This student account is no longer active.'});
+    if(!/^HSA-\d{3,}$/i.test(String(u.id||''))) { u.id=nextStudentId(d); save(d); }
+    if(!u.studentPasswordHash){
+      const token=crypto.randomBytes(32).toString('hex');
+      pendingStudentRegistrations.set(token,{userId:u.id,expiresAt:Date.now()+15*60*1000});
+      return res.json({ok:true,studentId:u.id,name:u.name,isNew:false,needsPassword:true,registrationToken:token,existing:true});
+    }
+    return res.json({ok:true,studentId:u.id,name:u.name,isNew:false,needsPassword:false,existing:true});
+  }
+  // A short-lived in-memory lock prevents two simultaneous clicks from creating two accounts for the same name.
+  const key=normalizeStudentName(name);
+  const pending=[...pendingStudentRegistrations.values()].find(x=>x.nameKey===key && x.expiresAt>Date.now());
+  if(pending){
+    return res.json({ok:true,studentId:pending.studentId,name:pending.name,isNew:false,needsPassword:true,registrationToken:pending.token,existing:true});
+  }
+  const idv=nextStudentId(d);
+  const u={id:idv,name,phone:'',email:'',role:'student',status:'active',purchased:[],enrollments:[],progress:{},createdAt:new Date().toISOString()};
+  d.users.push(u);
+  const token=crypto.randomBytes(32).toString('hex');
+  pendingStudentRegistrations.set(token,{userId:idv,studentId:idv,name, nameKey:key, token,expiresAt:Date.now()+15*60*1000});
+  save(d);
+  res.json({ok:true,studentId:idv,name,isNew:true,needsPassword:true,registrationToken:token,existing:false});
+});
+app.post('/api/auth/student-register-password',(req,res)=>{
+  const token=String(req.body.registrationToken||'');
+  const entry=pendingStudentRegistrations.get(token);
+  if(!entry || entry.expiresAt<Date.now()){ pendingStudentRegistrations.delete(token); return res.status(400).json({error:'Registration session expired. Please start again.'}); }
+  const password=String(req.body.password||'');
+  if(password.length<8) return res.status(400).json({error:'Password must be at least 8 characters.'});
+  const d=load();
+  const u=d.users.find(x=>x.id===entry.userId && x.role==='student');
+  if(!u) return res.status(404).json({error:'Student account could not be found.'});
+  u.studentPasswordHash=hashPassword(password);
+  u.sessionToken=crypto.randomBytes(32).toString('hex');
+  pendingStudentRegistrations.delete(token);
+  save(d);
+  res.json({ok:true,token:u.sessionToken,user:sanitizeUser(u),studentId:u.id});
+});
 
-app.post('/api/auth/student-id',(req,res)=>res.status(410).json({error:'Student ID login has been replaced by email OTP login.'}));
-app.post('/api/auth/student-register-password',(req,res)=>res.status(410).json({error:'Password registration has been replaced by email OTP login.'}));
-app.post('/api/auth/student-login',(req,res)=>res.status(410).json({error:'Student ID/password login has been replaced by email OTP login.'}));
+app.post('/api/auth/student-login',(req,res)=>{
+  const d=load();
+  const studentId=String(req.body.studentId||'').trim().toUpperCase();
+  const password=String(req.body.password||'');
+  if(!/^HSA-\d{3,}$/.test(studentId)) return res.status(400).json({error:'Enter a valid Student ID, e.g. HSA-001.'});
+  if(!password) return res.status(400).json({error:'Password is required.'});
+  const u=d.users.find(x=>x.role==='student' && String(x.id||'').toUpperCase()===studentId);
+  if(!u) return res.status(401).json({error:'Student ID or password is incorrect.'});
+  if(!verifyPassword(password,u.studentPasswordHash)) return res.status(401).json({error:'Student ID or password is incorrect.'});
+  u.sessionToken=crypto.randomBytes(32).toString('hex');
+  save(d);
+  res.json({ok:true,token:u.sessionToken,user:sanitizeUser(u)});
+});
 
 app.post('/api/auth/change-password',requireStudent,(req,res)=>{
   const d=load(),u=d.users.find(x=>x.id===req.user.id);
@@ -349,30 +418,6 @@ app.post('/api/admin/login',(req,res)=>{
   res.json({ok:true,token,admin:sanitizeUser(u),superAdmin:true});
 });
 
-app.post('/api/admin/notification',requireAdmin,(req,res)=>{const d=load(),title=String(req.body.title||'').trim(),text=String(req.body.text||'').trim(),audience=String(req.body.audience||'all');if(!title||!text)return res.status(400).json({error:'Title and message are required.'});const now=new Date().toISOString();let students=d.users.filter(u=>u.role==='student'&&u.status==='active');if(audience!=='all')students=students.filter(u=>u.id===audience);for(const u of students)d.notifications.unshift({id:id('NOT'),studentId:u.id,type:'admin',title,text,createdAt:now,read:false});save(d);res.json({ok:true,count:students.length});});
-app.post('/api/admin/notification/:id/delete',requireAdmin,(req,res)=>{const d=load(),i=d.notifications.findIndex(n=>n.id===req.params.id);if(i<0)return res.status(404).json({error:'Notification not found'});d.notifications.splice(i,1);save(d);res.json({ok:true});});
-app.post('/api/student/notification/:id/read',requireStudent,(req,res)=>{const d=load(),n=d.notifications.find(x=>x.id===req.params.id&&x.studentId===req.user.id);if(n)n.read=true;save(d);res.json({ok:true});});
-app.get('/api/student/comments',requireStudent,(req,res)=>{const d=load();res.json({comments:(d.comments||[]).filter(x=>x.studentId===req.user.id)});});
-app.post('/api/student/comment',requireStudent,(req,res)=>{const d=load(),u=d.users.find(x=>x.id===req.user.id),post=d.posts.find(x=>x.id===req.body.postId),text=String(req.body.text||'').trim();if(!post)return res.status(404).json({error:'Post not found.'});if(!text)return res.status(400).json({error:'Please write a comment.'});d.comments=d.comments||[];const c={id:id('COMM'),postId:post.id,postTitle:post.title,studentId:u.id,studentName:u.name,text,createdAt:new Date().toISOString()};d.comments.unshift(c);save(d);res.json({ok:true,comment:c});});
-app.post('/api/admin/comment/:id/delete',requireAdmin,(req,res)=>{const d=load(),i=(d.comments||[]).findIndex(x=>x.id===req.params.id);if(i<0)return res.status(404).json({error:'Comment not found.'});d.comments.splice(i,1);save(d);res.json({ok:true});});
-app.post('/api/student/doubt',requireStudent,async(req,res)=>{const d=load(),u=d.users.find(x=>x.id===req.user.id),course=d.courses.find(c=>c.id===req.body.courseId),text=String(req.body.text||'').trim();if(!text)return res.status(400).json({error:'Please enter your doubt.'});const q={id:id('DOUBT'),studentId:u.id,studentName:u.name,studentEmail:u.email||'',courseId:course?.id||'',courseTitle:course?.title||'General',text,status:'Open',reply:'',createdAt:new Date().toISOString()};d.doubts=d.doubts||[];d.doubts.unshift(q);const ownerEmail=String(process.env.SUPER_ADMIN_EMAIL||brevoConfig().fromEmail||'').trim();if(ownerEmail)await sendBrevoEmail({toEmail:ownerEmail,toName:'Academy Owner',subject:`New student doubt • ${q.courseTitle}`,htmlContent:`<div style="font-family:Arial;padding:20px"><h2>New Student Doubt</h2><p><b>Student:</b> ${q.studentName} (${q.studentId})</p><p><b>Email:</b> ${q.studentEmail||'Not saved'}</p><p><b>Course:</b> ${q.courseTitle}</p><p>${q.text.replace(/</g,'&lt;').replace(/\n/g,'<br>')}</p></div>`,textContent:`New Student Doubt\nStudent: ${q.studentName} (${q.studentId})\nEmail: ${q.studentEmail}\nCourse: ${q.courseTitle}\n\n${q.text}`});save(d);res.json({ok:true,doubt:q});});
-app.get('/api/student/doubts',requireStudent,(req,res)=>{const d=load();res.json({doubts:(d.doubts||[]).filter(x=>x.studentId===req.user.id)});});
-app.get('/api/admin/doubts',requireAdmin,(req,res)=>{const d=load();res.json({doubts:d.doubts||[]});});
-app.post('/api/admin/doubt/:id/reply',requireAdmin,async(req,res)=>{
-  const d=load(); const q=(d.doubts||[]).find(x=>x.id===req.params.id);
-  if(!q)return res.status(404).json({error:'Doubt not found'});
-  q.reply=String(req.body.reply||'').trim(); q.status='Answered'; q.answeredAt=new Date().toISOString();
-  const u=d.users.find(x=>x.id===q.studentId);
-  if(u){
-    d.notifications.unshift({id:id('NOT'),studentId:u.id,type:'doubt',title:'Your doubt has been answered',text:q.reply,createdAt:new Date().toISOString(),read:false});
-    if(u.email){
-      const safeReply=q.reply.replace(/</g,'&lt;').replace(/\n/g,'<br>');
-      await sendStudentEmail(d,u,`Answer to your doubt • ${q.courseTitle}`,`<div style="font-family:Arial;padding:20px"><h2>Hafiz Shahid's Academy</h2><p>Your doubt about <b>${q.courseTitle}</b> has been answered.</p><div style="padding:15px;background:#f5f7fb;border-radius:12px">${safeReply}</div></div>`,`Your doubt has been answered.\n\n${q.reply}`,'doubt-answer');
-    }
-  }
-  save(d); res.json({ok:true,doubt:q});
-});
-
 app.post('/api/admin/student',requireAdmin,(req,res)=>{
   const d=load();
   const name=String(req.body.name||'').trim().replace(/\s+/g,' ');
@@ -445,19 +490,19 @@ app.post('/api/admin/course',requireAdmin,upload.fields([{name:'cover',maxCount:
 app.post('/api/admin/course/:id/edit',requireAdmin,upload.fields([{name:'cover',maxCount:1},{name:'syllabusFile',maxCount:1}]),(req,res)=>{const d=load(),c=d.courses.find(x=>x.id===req.params.id);if(!c)return res.status(404).json({error:'Course not found'});for(const k of ['title','category','description','level','duration','startDate'])if(req.body[k]!==undefined)c[k]=req.body[k];if(req.body.price!==undefined)c.price=Number(req.body.price);if(req.body.oldPrice!==undefined)c.oldPrice=Number(req.body.oldPrice);if(req.body.validity!==undefined)c.validity=req.body.validity;if(req.files?.cover?.[0]){if(typeof c.image==='string'&&c.image.startsWith('/uploads/'))removeUploadFile(c.image);const coverData=imageDataUrl(req.files.cover[0]);if(coverData)c.image=coverData;}else if(req.body.image)c.image=req.body.image;if(req.files?.syllabusFile?.[0])c.syllabusUrl='/uploads/materials/'+req.files.syllabusFile[0].filename;else if(req.body.syllabusUrl!==undefined)c.syllabusUrl=req.body.syllabusUrl;save(d);res.json({ok:true,course:c});});
 app.post('/api/admin/course/:id/delete',requireAdmin,(req,res)=>{const d=load();d.courses=d.courses.filter(c=>c.id!==req.params.id);save(d);res.json({ok:true});});
 
-app.post('/api/admin/lesson',requireAdmin,upload.fields([{name:'video',maxCount:1},{name:'thumbnail',maxCount:1}]),async(req,res)=>{
+app.post('/api/admin/lesson',requireAdmin,upload.single('file'),async(req,res)=>{
  const d=load(),c=d.courses.find(x=>x.id===req.body.courseId);if(!c)return res.status(404).json({error:'Course not found'});
- let type=req.body.type||'youtube',video=req.body.video||'';const videoFile=req.files?.video?.[0],thumbFile=req.files?.thumbnail?.[0];if(videoFile){type='upload';video='/uploads/videos/'+videoFile.filename;}
+ let type=req.body.type||'youtube',video=req.body.video||'';if(req.file){type='upload';video='/uploads/videos/'+req.file.filename;}
  if(video&&type==='youtube'&&!/^https?:\/\//i.test(video))return res.status(400).json({error:'Please enter a valid YouTube URL.'});
- const l={id:id('LESSON'),title:String(req.body.title||'').trim(),type,video,thumbnail:thumbFile?'/uploads/thumbnails/'+thumbFile.filename:'',free:req.body.free==='true'||req.body.free===true,description:req.body.description||'',createdAt:new Date().toISOString()};
+ const l={id:id('LESSON'),title:String(req.body.title||'').trim(),type,video,free:req.body.free==='true'||req.body.free===true,description:req.body.description||'',createdAt:new Date().toISOString()};
  if(!l.title)return res.status(400).json({error:'Lesson title is required.'});if(!l.video)return res.status(400).json({error:'Add a YouTube link or upload a video.'});
  c.lessons=c.lessons||[];c.lessons.push(l);const mail=await sendCourseClassEmails(d,c,{title:l.title,kind:l.type==='upload'?'New recorded class':'New YouTube class',recordingUrl:l.video,description:l.description||'A new class is now available in your purchased course.'});save(d);res.json({ok:true,lesson:l,email:mail});
 });
 app.post('/api/admin/lesson/:id/edit',requireAdmin,upload.single('file'),(req,res)=>{
  const d=load();let found=null;for(const c of d.courses){const l=(c.lessons||[]).find(x=>x.id===req.params.id);if(l){found={c,l};break;}}
  if(!found)return res.status(404).json({error:'Lesson not found'});const {c,l}=found;
- if(req.body.title!==undefined)l.title=String(req.body.title).trim();if(req.body.description!==undefined)l.description=req.body.description;if(req.body.free!==undefined)l.free=req.body.free==='true'||req.body.free===true;const thumbFile=req.files?.thumbnail?.[0];if(thumbFile){removeUploadFile(l.thumbnail);l.thumbnail='/uploads/thumbnails/'+thumbFile.filename;}
- const videoFile=req.files?.video?.[0];if(videoFile){removeUploadFile(l.video);l.type='upload';l.video='/uploads/videos/'+videoFile.filename;}else if(req.body.video!==undefined&&req.body.video){l.type='youtube';l.video=req.body.video;}
+ if(req.body.title!==undefined)l.title=String(req.body.title).trim();if(req.body.description!==undefined)l.description=req.body.description;if(req.body.free!==undefined)l.free=req.body.free==='true'||req.body.free===true;
+ if(req.file){removeUploadFile(l.video);l.type='upload';l.video='/uploads/videos/'+req.file.filename;}else if(req.body.video!==undefined&&req.body.video){l.type='youtube';l.video=req.body.video;}
  save(d);res.json({ok:true,lesson:l});
 });
 app.post('/api/admin/lesson/:id/delete',requireAdmin,(req,res)=>{const d=load();for(const c of d.courses){const idx=(c.lessons||[]).findIndex(x=>x.id===req.params.id);if(idx>=0){const l=c.lessons[idx];removeUploadFile(l.video);c.lessons.splice(idx,1);save(d);return res.json({ok:true});}}res.status(404).json({error:'Lesson not found'});});

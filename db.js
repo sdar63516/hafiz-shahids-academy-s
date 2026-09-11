@@ -38,7 +38,7 @@ function normalizeUsers(d) {
 }
 function readSeed() {
   const d = JSON.parse(fs.readFileSync(DBPATH, 'utf8'));
-  for (const k of ['users','courses','payments','applications','materials','assignments','submissions','liveClasses','announcements','posts','notifications','receipts','certificates','teachers','messageLogs','doubts','comments']) if (!Array.isArray(d[k])) d[k] = [];
+  for (const k of ['users','courses','payments','applications','materials','assignments','submissions','liveClasses','announcements','posts','notifications','receipts','certificates','teachers','messageLogs']) if (!Array.isArray(d[k])) d[k] = [];
   d.settings = d.settings || {};
   for (const c of d.courses) { c.lessons = Array.isArray(c.lessons) ? c.lessons : []; if (c.startDate === undefined) c.startDate = ''; }
   normalizeUsers(d);
@@ -58,7 +58,7 @@ async function initStore() {
     await pool.query('INSERT INTO hsa_app_state (id, data) VALUES (1, $1::jsonb)', [JSON.stringify(state)]);
   } else {
     state = result.rows[0].data;
-    for (const k of ['users','courses','payments','applications','materials','assignments','submissions','liveClasses','announcements','posts','notifications','receipts','certificates','teachers','messageLogs','doubts','comments']) if (!Array.isArray(state[k])) state[k] = [];
+    for (const k of ['users','courses','payments','applications','materials','assignments','submissions','liveClasses','announcements','posts','notifications','receipts','certificates','teachers','messageLogs']) if (!Array.isArray(state[k])) state[k] = [];
     state.settings = state.settings || {};
     normalizeUsers(state);
     await pool.query('UPDATE hsa_app_state SET data=$1::jsonb, updated_at=NOW() WHERE id=1', [JSON.stringify(state)]);

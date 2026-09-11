@@ -17,8 +17,55 @@
 
 <body>
     <div id="toast"></div>
-    <section id="homeLanding" class="landing-screen"><div class="landing-bg"></div><header class="landing-nav"><a class="brand landing-brand" href="#"><span class="mark"><img src="/academy-mark.png" alt="Academy"></span><span>Hafiz Shahid's<br><b>Academy</b></span></a><button class="landing-login-btn" onclick="openLogin()">Login <span>→</span></button></header><main class="landing-main"><div class="landing-copy"><div class="eyebrow">LEARN • PRACTICE • GROW</div><h1>Your learning journey,<br><span>beautifully connected.</span></h1><p>Explore courses, recorded classes, live learning, assignments, certificates and direct support — all from one academy platform.</p><div class="landing-actions"><button class="primary landing-cta" onclick="openLogin()">Enter Academy <span>→</span></button><span class="landing-note">Secure email OTP login</span></div></div><div class="landing-visual"><div class="landing-glow"></div><div class="landing-card main"><img src="/academy-logo.png" alt="Hafiz Shahid's Academy"><b>Hafiz Shahid's Academy</b><span>Knowledge • Character • Excellence</span></div><div class="floating-card fc1">LIVE CLASSES <b>●</b></div><div class="floating-card fc2">CERTIFICATES <b>✓</b></div></div></main><div class="landing-features"><span>Recorded Classes</span><span>Live / Zoom</span><span>Assignments</span><span>Study Material</span><span>Certificates</span><span>Student Support</span></div></section>
-    <section id="loginGate" class="gate hidden login-overlay"><button class="login-back" onclick="closeLogin()">← Back to Home</button><div class="gate-left student-login-side"><div class="gate-brand"><img class="academy-logo big-logo" src="/academy-logo.png" alt="Hafiz Shahid's Academy"><b>HAFIZ SHAHID'S<br>ACADEMY</b></div><img id="loginPhoto" src="/shahid.jpg" alt="Hafiz Shahid"><div class="quote">“Knowledge is the key to a better future.”</div><small>Learn • Practice • Grow</small><div class="mini-admin-box"><div class="eyebrow">OWNER ACCESS</div><h3>Admin Login</h3><form id="adminQuickForm" class="form"><input id="quickAdminPassword" type="password" placeholder="Admin password" required><button class="primary">Open Admin Panel →</button></form></div></div><div class="gate-right login-panel-right"><div class="eyebrow">STUDENT ACCESS</div><h1>Welcome <span>back.</span></h1><p class="lead">Login securely with the email address registered with the academy.</p><form id="nameForm" class="form" novalidate><label>Full name</label><input id="studentName" autocomplete="name" placeholder="Enter your full name" required><label>Email address</label><input id="studentEmail" type="email" autocomplete="email" placeholder="you@example.com" required><div id="lastStudentSuggestion" class="hidden suggestion-wrap"></div><button class="primary">Send OTP →</button></form><form id="studentLoginForm" class="form hidden" novalidate><div class="student-id-card"><span>Your Student ID</span><strong id="studentIdDisplay">HSA-001</strong></div><label>Enter OTP</label><input id="studentOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="Enter OTP that we sent to your email" required><input id="otpChallenge" type="hidden"><button class="primary" id="studentSubmitButton">Verify OTP & Enter →</button><button type="button" class="outline" onclick="resendStudentOtp()">Resend OTP</button><button type="button" class="outline" onclick="backToName()">Use another email</button></form><p class="small login-security">Your OTP is valid for 10 minutes. Never share it with anyone.</p><p class="admin-link"><span>Academy owner?</span> <a href="/admin.html">Admin Login</a></p></div></section>
+    <section id="publicHome" class="public-home">
+        <header class="public-nav">
+            <a class="public-brand" href="#" onclick="scrollToTop();return false"><img src="/academy-mark.png" alt="Academy"><span>Hafiz Shahid's<br><b>Academy</b></span></a>
+            <button class="primary nav-login" onclick="openLoginPanel()">Login</button>
+        </header>
+        <main class="public-hero">
+            <div class="public-copy">
+                <div class="eyebrow">HAFIZ SHAHID'S ACADEMY</div>
+                <h1>Learn today.<br><span>Grow for life.</span></h1>
+                <p>Learn through recorded classes, live sessions, assignments and study material — all in one simple academy experience.</p>
+                <div class="public-actions">
+                    <button class="primary" onclick="openLoginPanel()">Enter Academy →</button>
+                    <a class="outline" href="#publicFeatures" onclick="document.getElementById('publicFeatures').scrollIntoView({behavior:'smooth'});return false">Explore</a>
+                </div>
+                <div class="public-pills"><span>Secure Student Access</span><span>Live + Recorded Classes</span><span>Certificates</span></div>
+            </div>
+            <div class="public-visual">
+                <div class="public-glow"></div>
+                <img src="/shahid.jpg" alt="Hafiz Shahid">
+                <div class="public-badge"><b>Learn • Practice • Grow</b><small>Hafiz Shahid's Academy</small></div>
+            </div>
+        </main>
+        <section id="publicFeatures" class="public-features">
+            <article><span>01</span><b>Structured Learning</b><p>Courses, lessons and resources stay organized in one place.</p></article>
+            <article><span>02</span><b>Stay Updated</b><p>Important classes and academy updates remain available after refresh.</p></article>
+            <article><span>03</span><b>Your Account</b><p>Your Student ID, purchases and progress stay connected to your account.</p></article>
+        </section>
+    </section>
+
+    <div id="loginOverlay" class="login-overlay hidden" onclick="closeLoginPanel(event)">
+        <section id="loginGate" class="login-panel" onclick="event.stopPropagation()">
+            <button class="login-close" onclick="closeLoginPanel()" aria-label="Close login">×</button>
+            <div class="login-panel-head"><img src="/academy-logo.png" alt="Academy logo"><div><div class="eyebrow">SECURE ACCESS</div><h2>Welcome to the Academy</h2><p>Choose your account and continue.</p></div></div>
+            <div class="login-columns">
+                <div class="login-column admin-login-column">
+                    <div class="login-icon">◆</div><span class="login-role">OWNER / ADMIN</span><h3>Admin Login</h3><p>Open your management panel with your existing admin password.</p>
+                    <form id="adminQuickForm" class="form" onsubmit="adminQuickLogin(event)"><label>Admin password</label><input id="quickAdminPassword" type="password" autocomplete="current-password" placeholder="Enter admin password" required><button class="primary">Enter Admin Panel →</button></form>
+                    <small>Admin access is password-only for your account.</small>
+                </div>
+                <div class="login-divider"><span>OR</span></div>
+                <div class="login-column student-login-column">
+                    <div class="login-icon student-icon">✦</div><span class="login-role">STUDENT</span><h3>Student Login</h3><p>Enter your name and email. We'll send a one-time verification code.</p>
+                    <form id="nameForm" class="form" novalidate><label>Your full name</label><input id="studentName" autocomplete="name" placeholder="Enter your full name" required><label>Email address</label><input id="studentEmail" type="email" autocomplete="email" placeholder="you@example.com" required><div id="lastStudentSuggestion" class="hidden suggestion-wrap"></div><button class="primary">Send OTP →</button></form>
+                    <form id="studentOtpForm" class="form hidden" novalidate><div class="student-id-card"><span>Student ID</span><strong id="studentIdDisplay">HSA-001</strong></div><label>Enter OTP</label><input id="studentOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="Enter OTP sent to your email" required><input id="studentId" type="hidden"><input id="studentEmailHidden" type="hidden"><button class="primary">Verify OTP & Enter →</button><button type="button" class="outline" onclick="backToName()">Use another account</button></form>
+                    <div id="otpHint" class="small otp-hint"></div>
+                </div>
+            </div>
+        </section>
+    </div>
     <section id="app" class="hidden">
         <header class="topbar"><a class="brand" href="#" onclick="go('home');return false"><span class="mark logo-mark" id="brandMark"><img src="/academy-mark.png" alt="Academy logo"></span><span>Hafiz Shahid's<br><b>Academy</b></span></a><button
                 class="mobile-menu" onclick="toggleSidebar()">☰</button>
@@ -34,7 +81,8 @@
                     onclick="go('materials')" data-nav="materials">▤ Study Material</button><button
                     onclick="go('downloads')" data-nav="downloads">⇩ Downloads</button><button
                     onclick="go('assignments')" data-nav="assignments">✓ Assignments</button><button
-                    onclick="go('live')" data-nav="live">◉ Live Classes</button><button onclick="go('certificates')" data-nav="certificates">◇ My Certificate</button><button onclick="go('doubts')" data-nav="doubts">? Ask Doubt</button>
+                    onclick="go('live')" data-nav="live">◉ Live Classes</button><button onclick="go('certificates')"
+                    data-nav="certificates">◇ My Certificate</button>
                 <div class="side-title">ACCOUNT</div><button onclick="go('profile')" data-nav="profile">◯ About
                     Me</button><button onclick="go('settings')" data-nav="settings">⚙ Settings</button><button
                     onclick="logout()">↪ Logout</button>
