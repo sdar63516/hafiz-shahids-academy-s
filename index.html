@@ -78,7 +78,28 @@ let role=localStorage.getItem('hsa_role')||'', studentToken=localStorage.getItem
 const esc=v=>String(v??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[m]));
 const api=(path)=>API_BASE+path;
 function asset(url){if(!url)return ''; if(/^https?:\/\//i.test(url)||/^data:/i.test(url)||url.startsWith('blob:'))return url; return API_BASE+(url.startsWith('/')?url:'/'.concat(url));}
-async function request(path,opts={}){const headers=new Headers(opts.headers||{});headers.set('Accept','application/json');if(!(opts.body instanceof FormData)&&opts.body!==undefined)headers.set('Content-Type','application/json');if(studentToken)headers.set('x-student-token',studentToken);if(adminToken)headers.set('x-admin-token',adminToken);const r=await fetch(api(path),{...opts,headers,cache:'no-store'});let j={};try{j=await r.json()}catch{j={error:await r.text()}}if(!r.ok){if(r.status===401&&(path.startsWith('/api/student-state')||path.startsWith('/api/certificates'))){studentToken='';localStorage.removeItem(STUDENT_TOKEN_KEY);role='';current=null;}if(r.status===401&&path.startsWith('/api/admin')){adminToken='';localStorage.removeItem(ADMIN_TOKEN_KEY);role='';}throw Error(j.error||`Request failed (${r.status})`)}return j}
+async function request(path,opts={}){
+  const headers=new Headers(opts.headers||{});
+  headers.set('Accept','application/json');
+  if(!(opts.body instanceof FormData)&&opts.body!==undefined)headers.set('Content-Type','application/json');
+  if(studentToken)headers.set('x-student-token',studentToken);
+  if(adminToken)headers.set('x-admin-token',adminToken);
+  let r;
+  try{
+    r=await fetch(api(path),{...opts,headers,cache:'no-store',mode:'cors'});
+  }catch(err){
+    const msg=String(err?.message||err||'Network error');
+    throw Error(`Cannot connect to academy server. Please check your internet connection and make sure the Academy backend is online. (${msg})`);
+  }
+  let j={};
+  try{j=await r.json()}catch{j={error:await r.text()}}
+  if(!r.ok){
+    if(r.status===401&&(path.startsWith('/api/student-state')||path.startsWith('/api/certificates'))){studentToken='';localStorage.removeItem(STUDENT_TOKEN_KEY);role='';current=null;}
+    if(r.status===401&&path.startsWith('/api/admin')){adminToken='';localStorage.removeItem(ADMIN_TOKEN_KEY);role='';}
+    throw Error(j.error||`Request failed (${r.status})`)
+  }
+  return j
+}
 async function loadPublic(){const j=await request('/api/public-state');DB.settings=j.settings||{};DB.courses=j.courses||[];DB.posts=j.posts||[];DB.announcements=j.announcements||[];}
 async function loadStudent(){const j=await request('/api/student-state');current=j.user;DB.settings=j.settings||{};DB.courses=j.courses||[];DB.materials=j.materials||[];DB.assignments=j.assignments||[];DB.submissions=j.submissions||[];DB.liveClasses=j.liveClasses||[];DB.announcements=j.announcements||[];DB.posts=j.posts||[];DB.notifications=j.notifications||[];DB.receipts=j.receipts||[];DB.doubts=j.doubts||[];DB.certificates=(await request('/api/certificates')).certificates||[];}
 async function loadAdmin(){const j=await request('/api/admin-state');DB=j;current=j.users?.find(u=>u.role==='superadmin')||null;}

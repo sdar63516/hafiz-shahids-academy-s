@@ -7,6 +7,23 @@ const { initStore, load, save, flush, passwordHash } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
+
+// CORS: the Android/PWA app is hosted separately from the academy backend.
+// Allow browser requests from the app while keeping credentials/secrets server-side.
+const CORS_ORIGINS = String(process.env.APP_ORIGINS || '*').split(',').map(s=>s.trim()).filter(Boolean);
+app.use((req,res,next)=>{
+  const origin = req.headers.origin;
+  if (CORS_ORIGINS.includes('*')) {
+    res.setHeader('Access-Control-Allow-Origin','*');
+  } else if (origin && CORS_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin',origin);
+    res.setHeader('Vary','Origin');
+  }
+  res.setHeader('Access-Control-Allow-Methods','GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers','Content-Type, Accept, x-student-token, x-admin-token, Authorization');
+  if(req.method==='OPTIONS') return res.sendStatus(204);
+  next();
+});
 const ROOT = __dirname;
 const UPLOAD_ROOT = path.join(ROOT, 'uploads');
 for (const f of ['videos','materials','assignments','payments','profiles','covers','branding']) fs.mkdirSync(path.join(UPLOAD_ROOT,f), {recursive:true});
