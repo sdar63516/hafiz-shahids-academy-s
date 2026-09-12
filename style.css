@@ -531,3 +531,64 @@ body.login-open{overflow:hidden}
     max-width: 80vw;
   }
 }
+
+/* COURSE COMMUNITY — FINAL MOBILE CONTAINMENT 8.4.2
+   Community-only fix. Prevents the community view from creating a desktop-width
+   layout inside the mobile student shell. Other sections are untouched. */
+#content:has(.community-layout){min-width:0;width:100%;max-width:100%;overflow-x:hidden}
+#content:has(.community-layout) .community-page-head,
+#content:has(.community-layout) .community-course-switcher,
+#content:has(.community-layout) .community-layout{width:100%;max-width:100%;min-width:0}
+#content:has(.community-layout) .community-layout{grid-template-columns:minmax(0,1fr);overflow:hidden}
+#content:has(.community-layout) .community-main,
+#content:has(.community-layout) .community-side,
+#content:has(.community-layout) .community-header,
+#content:has(.community-layout) .community-compose,
+#content:has(.community-layout) .community-messages,
+#content:has(.community-layout) .community-info{min-width:0;max-width:100%;width:100%;box-sizing:border-box}
+#content:has(.community-layout) .community-header>div:first-child,
+#content:has(.community-layout) .community-info>*,
+#content:has(.community-layout) .community-support>*{min-width:0;max-width:100%}
+#content:has(.community-layout) .community-header h2,
+#content:has(.community-layout) .community-header p,
+#content:has(.community-layout) .community-info h3,
+#content:has(.community-layout) .community-info p{overflow-wrap:anywhere;word-break:break-word}
+#content:has(.community-layout) .community-course-switcher{display:flex;flex-wrap:wrap;overflow:visible}
+#content:has(.community-layout) .community-course-chip{white-space:normal;min-width:0;max-width:100%;flex:1 1 210px;text-align:left}
+#content:has(.community-layout) .community-course-chip span:last-child{min-width:0;overflow-wrap:anywhere;word-break:break-word}
+#content:has(.community-layout) .community-message{min-width:0;max-width:94%;width:auto}
+#content:has(.community-layout) .community-bubble{min-width:0;max-width:calc(100% - 42px);overflow-wrap:anywhere;word-break:break-word}
+#content:has(.community-layout) .community-compose textarea{min-width:0;width:100%;max-width:100%;box-sizing:border-box}
+
+@media(max-width:620px){
+  #content:has(.community-layout){padding-left:0;padding-right:0}
+  #content:has(.community-layout) .community-page-head{padding-left:2px;padding-right:2px;display:block}
+  #content:has(.community-layout) .community-page-head h1{font-size:clamp(28px,8vw,36px);max-width:100%}
+  #content:has(.community-layout) .community-page-head p{font-size:11px;max-width:100%}
+  #content:has(.community-layout) .community-secure-pill{display:inline-flex;max-width:100%;white-space:normal}
+  #content:has(.community-layout) .community-course-switcher{gap:8px;padding:2px 0 12px}
+  #content:has(.community-layout) .community-course-chip{flex:1 1 100%;width:100%;max-width:100%;padding:9px 10px}
+  #content:has(.community-layout) .community-layout{display:block}
+  #content:has(.community-layout) .community-main{overflow:hidden;border-radius:16px}
+  #content:has(.community-layout) .community-header{padding:15px;display:block}
+  #content:has(.community-layout) .community-online{display:inline-flex;max-width:100%;width:auto;white-space:normal;margin-top:10px}
+  #content:has(.community-layout) .community-messages{height:52vh;min-height:280px;max-height:520px;padding:12px;overflow-x:hidden}
+  #content:has(.community-layout) .community-message{max-width:100%;width:100%;gap:7px}
+  #content:has(.community-layout) .community-message.mine{width:100%}
+  #content:has(.community-layout) .community-avatar{width:30px;height:30px;flex:0 0 30px}
+  #content:has(.community-layout) .community-bubble{max-width:calc(100% - 37px);padding:9px 10px}
+  #content:has(.community-layout) .community-compose{display:grid;grid-template-columns:32px minmax(0,1fr);padding:11px;gap:7px}
+  #content:has(.community-layout) .community-compose-avatar{width:32px;height:32px}
+  #content:has(.community-layout) .community-compose textarea{grid-column:2;min-height:46px;margin:0}
+  #content:has(.community-layout) .community-send{grid-column:2;width:100%;max-width:100%;height:44px}
+  #content:has(.community-layout) .community-side{display:block;margin-top:10px}
+  #content:has(.community-layout) .community-info{margin-bottom:10px;padding:15px}
+}
+
+@media(max-width:380px){
+  #content:has(.community-layout) .community-course-chip{font-size:11px}
+  #content:has(.community-layout) .community-header{padding:13px}
+  #content:has(.community-layout) .community-messages{padding:9px}
+  #content:has(.community-layout) .community-compose{padding:9px}
+  #content:has(.community-layout) .community-bubble{max-width:calc(100% - 36px);font-size:11px}
+}
