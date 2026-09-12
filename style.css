@@ -283,3 +283,251 @@ body.login-open{overflow:hidden}
 
 /* HSA Course Community — isolated feature styles */
 .community-page-head{align-items:center}.community-secure-pill{display:inline-flex;align-items:center;gap:7px;padding:9px 12px;border-radius:999px;background:#ecfdf5;color:#047857;border:1px solid #bbf7d0;font-size:10px;font-weight:900;white-space:nowrap}.community-course-switcher{display:flex;gap:9px;overflow:auto;padding:2px 2px 14px;scrollbar-width:thin}.community-course-chip{border:1px solid #e2e8f0;background:#fff;border-radius:14px;padding:9px 12px;display:flex;align-items:center;gap:8px;font:inherit;color:#334155;cursor:pointer;white-space:nowrap;box-shadow:0 5px 16px rgba(15,23,42,.04);transition:.2s}.community-course-chip:hover{transform:translateY(-1px);border-color:#c7d2fe}.community-course-chip.active{background:linear-gradient(135deg,#eef4ff,#f5f0ff);border-color:#a5b4fc;color:#4338ca;box-shadow:0 9px 24px rgba(79,70,229,.10)}.community-chip-dot{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;font-size:10px;font-weight:900}.community-layout{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:16px;align-items:start}.community-main{padding:0;overflow:hidden}.community-header{padding:20px 21px;border-bottom:1px solid #e7ebf2;display:flex;justify-content:space-between;gap:18px;align-items:flex-start;background:linear-gradient(135deg,#fbfdff,#f7f5ff)}.community-header h2{margin:8px 0 4px;font-size:22px}.community-header p{margin:0;color:#728096;font-size:11px}.community-online{display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:999px;background:#fff;border:1px solid #e2e8f0;color:#667085;font-size:9px;font-weight:800;white-space:nowrap}.community-online i{width:7px;height:7px;border-radius:50%;background:#16a34a;box-shadow:0 0 0 4px #dcfce7}.community-messages{height:min(58vh,620px);min-height:360px;overflow:auto;padding:22px;background:radial-gradient(circle at 100% 0,#ede9fe55,transparent 35%),linear-gradient(180deg,#fbfcff,#f8fafc)}.community-message{display:flex;gap:10px;margin:0 0 15px;max-width:86%;align-items:flex-end}.community-message.mine{margin-left:auto;flex-direction:row-reverse}.community-avatar{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;flex:none;background:linear-gradient(135deg,#e0e7ff,#ede9fe);color:#4338ca;font-size:9px;font-weight:1000;border:1px solid #dbe3ff}.community-avatar.academy{background:linear-gradient(135deg,#071a32,#21466d);color:#ffd76a;border-color:#1f4267}.community-bubble{min-width:0;padding:11px 13px;border:1px solid #e3e8f1;background:#fff;border-radius:15px 15px 15px 5px;box-shadow:0 7px 20px rgba(15,23,42,.045)}.community-message.mine .community-bubble{background:linear-gradient(135deg,#eef4ff,#f5f0ff);border-color:#d9defd;border-radius:15px 15px 5px 15px}.community-message-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.community-message-meta b{font-size:10px;color:#17243b}.community-message-meta time{font-size:8px;color:#98a2b3}.community-admin-badge{font-size:7px;letter-spacing:.7px;font-weight:1000;padding:3px 5px;border-radius:999px;background:#fff4c7;color:#9a6700;border:1px solid #fde68a}.community-bubble p{margin:6px 0 0;color:#42526a;font-size:11px;line-height:1.6;overflow-wrap:anywhere}.community-compose{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:9px;padding:14px 16px;border-top:1px solid #e7ebf2;background:#fff;align-items:end}.community-compose-avatar{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;font-size:9px;font-weight:1000}.community-compose textarea{resize:none;min-height:44px;border-radius:13px;background:#f8fafc}.community-send{height:44px;white-space:nowrap}.community-send span{margin-left:5px}.community-side{display:grid;gap:12px}.community-info{padding:18px}.community-info-icon{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:linear-gradient(135deg,#eef4ff,#f4edff);font-size:19px;margin-bottom:11px}.community-info h3{margin:0 0 5px}.community-info p{font-size:11px;color:#68768a;line-height:1.65;margin:0}.community-rules{display:grid;gap:8px;margin-top:13px;padding-top:12px;border-top:1px solid #edf0f5}.community-rules span{font-size:9px;color:#516176}.community-support{background:linear-gradient(145deg,#071a32,#173d62);color:#fff;border:0}.community-support p{color:#b9c9da}.community-support .outline{margin-top:14px;border-color:#ffffff38;color:#fff;background:#ffffff0d}.community-no-messages{height:100%;min-height:260px;display:grid;place-content:center;text-align:center;gap:5px;color:#7a8799}.community-no-messages div{font-size:34px;margin-bottom:3px}.community-no-messages b{font-size:13px;color:#35445b}.community-no-messages span{font-size:10px}.community-empty{text-align:center;padding:60px 20px}.community-empty-icon{font-size:42px;margin-bottom:8px}.community-empty p{color:#718096;font-size:12px}@media(max-width:900px){.community-layout{grid-template-columns:1fr}.community-side{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:620px){.community-header{display:block}.community-online{margin-top:12px;width:max-content}.community-messages{min-height:330px;height:55vh;padding:14px}.community-message{max-width:94%}.community-compose{grid-template-columns:34px minmax(0,1fr)}.community-send{grid-column:2;width:100%}.community-side{grid-template-columns:1fr}.community-page-head{display:block}.community-secure-pill{margin-top:10px}}
+
+
+/* HSA COURSE COMMUNITY — MOBILE RESPONSIVE PATCH 8.4.1
+   Isolated to the Course Community feature only. */
+.community-page-head,
+.community-layout,
+.community-main,
+.community-header,
+.community-course-switcher,
+.community-compose,
+.community-side {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.community-page-head > *,
+.community-header > *,
+.community-course-chip,
+.community-message,
+.community-bubble,
+.community-info,
+.community-support {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.community-page-head h1,
+.community-page-head p,
+.community-header h2,
+.community-header p,
+.community-info h3,
+.community-info p,
+.community-support h3,
+.community-support p {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.community-course-switcher {
+  width: 100%;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.community-course-switcher::-webkit-scrollbar { display: none; }
+
+.community-course-chip {
+  flex: 0 0 auto;
+  max-width: min(88vw, 360px);
+}
+
+.community-message {
+  width: fit-content;
+}
+
+.community-bubble {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.community-compose textarea {
+  width: 100%;
+  min-width: 0 !important;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 620px) {
+  .community-page-head {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .community-page-head h1 {
+    font-size: clamp(30px, 8vw, 38px);
+    line-height: 1.08;
+  }
+
+  .community-page-head p {
+    max-width: 100%;
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  .community-secure-pill {
+    margin-top: 0;
+    max-width: 100%;
+  }
+
+  .community-course-switcher {
+    gap: 8px;
+    padding-bottom: 10px;
+  }
+
+  .community-course-chip {
+    max-width: 84vw;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .community-chip-dot {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+  }
+
+  .community-layout {
+    display: block;
+    width: 100%;
+  }
+
+  .community-main {
+    width: 100%;
+    padding: 0;
+  }
+
+  .community-header {
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    padding: 16px;
+    width: 100%;
+  }
+
+  .community-header h2 {
+    font-size: clamp(20px, 5.5vw, 25px);
+    line-height: 1.18;
+  }
+
+  .community-header p {
+    font-size: 11px;
+    line-height: 1.55;
+  }
+
+  .community-online {
+    width: fit-content;
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .community-messages {
+    width: 100%;
+    height: 52vh;
+    min-height: 300px;
+    max-height: 560px;
+    padding: 13px;
+    overflow-x: hidden;
+  }
+
+  .community-message,
+  .community-message.mine {
+    max-width: 100%;
+    width: auto;
+  }
+
+  .community-avatar {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+  }
+
+  .community-bubble {
+    max-width: calc(100vw - 86px);
+    padding: 10px 11px;
+  }
+
+  .community-compose {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .community-compose-avatar {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+  }
+
+  .community-compose textarea {
+    min-height: 46px;
+    width: 100%;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+
+  .community-send {
+    grid-column: 2;
+    width: 100%;
+    max-width: 100%;
+    height: 44px;
+  }
+
+  .community-side {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-top: 12px;
+  }
+
+  .community-info {
+    width: 100%;
+    padding: 16px;
+  }
+
+  .community-info h3 {
+    font-size: 20px;
+  }
+
+  .community-info p,
+  .community-rules span {
+    font-size: 11px;
+    line-height: 1.55;
+  }
+
+  .community-support .outline {
+    width: 100%;
+  }
+}
+
+@media (max-width: 380px) {
+  .community-header,
+  .community-info {
+    padding: 13px;
+  }
+
+  .community-messages {
+    padding: 10px;
+  }
+
+  .community-bubble {
+    max-width: calc(100vw - 78px);
+  }
+
+  .community-compose {
+    padding: 10px;
+  }
+
+  .community-course-chip {
+    max-width: 80vw;
+  }
+}
