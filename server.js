@@ -181,8 +181,9 @@ app.get('/uploads/covers/:file',(req,res,next)=>{
 });
 app.use('/uploads', express.static(UPLOAD_ROOT, {fallthrough:false, maxAge:'1h'}));
 // Always make the public student website the root page. Admin remains /admin.html.
-app.get('/',(req,res)=>res.sendFile(path.join(ROOT,'index.html')));
+// Disable browser/proxy caching for the app shell so refreshes always receive the latest client code.
 app.use((req,res,next)=>{ if(req.path==='/' || /\.(html|js|css|webmanifest)$/.test(req.path)) res.setHeader('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate'); next(); });
+app.get('/',(req,res)=>res.sendFile(path.join(ROOT,'index.html')));
 app.use(express.static(ROOT));
 
 // Cloudinary direct-video upload configuration. The browser uploads large videos
