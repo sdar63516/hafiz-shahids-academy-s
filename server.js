@@ -120,11 +120,11 @@ function studentState(u){
   const mine=(owner || fullAccess) ? d.courses.map(c=>({courseId:c.id,courseTitle:c.title,joiningDate:new Date().toISOString(),endDate:'2099-12-31T23:59:59.000Z',status:'active',active:true})) : (u.enrollments||[]).filter(e=>e.status==='active').map(e=>({...e,active:new Date(e.endDate)>=new Date()}));
   const allowed=(owner || fullAccess) ? ()=>true : (cid)=>mine.some(e=>e.courseId===cid && e.active);
   const safeUser=sanitizeUser(u); if(owner||fullAccess){safeUser.enrollments=mine;safeUser.purchased=d.courses.map(c=>c.id);} else {safeUser.enrollments=mine;}
-  return {settings:d.settings,courses:d.courses,materials:d.materials.filter(m=>allowed(m.courseId)),assignments:d.assignments.filter(a=>allowed(a.courseId)),submissions:d.submissions.filter(s=>s.studentId===u.id),liveClasses:d.liveClasses.filter(l=>allowed(l.courseId)),announcements:d.announcements,posts:d.posts,notifications:d.notifications.filter(n=>!n.studentId||n.studentId===u.id),receipts:d.receipts.filter(r=>r.studentId===u.id),doubts:(d.doubts||[]).filter(x=>x.studentId===u.id),comments:(d.comments||[]).filter(x=>x.studentId===u.id||allowed(x.courseId)),user:safeUser};
+  return {settings:d.settings,courses:d.courses,materials:d.materials.filter(m=>allowed(m.courseId)),assignments:d.assignments.filter(a=>allowed(a.courseId)),submissions:d.submissions.filter(s=>s.studentId===u.id),liveClasses:d.liveClasses.filter(l=>allowed(l.courseId)),announcements:d.announcements,posts:d.posts,notifications:d.notifications.filter(n=>!n.studentId||n.studentId===u.id),receipts:d.receipts.filter(r=>r.studentId===u.id),doubts:(d.doubts||[]).filter(x=>x.studentId===u.id),comments:(d.comments||[]).filter(x=>x.studentId===u.id||allowed(x.courseId)),communityMessages:(d.communityMessages||[]).filter(x=>allowed(x.courseId)).slice(0,500),user:safeUser};
 }
 function adminState(){
   const d=load();
-  return {settings:d.settings,users:d.users.map(sanitizeUser),courses:d.courses,payments:d.payments,applications:d.applications,materials:d.materials,assignments:d.assignments,submissions:d.submissions,liveClasses:d.liveClasses,announcements:d.announcements,posts:d.posts,notifications:d.notifications,receipts:d.receipts,certificates:d.certificates,teachers:d.teachers.map(sanitizeUser),messageLogs:d.messageLogs,doubts:d.doubts||[],comments:d.comments||[]};
+  return {settings:d.settings,users:d.users.map(sanitizeUser),courses:d.courses,payments:d.payments,applications:d.applications,materials:d.materials,assignments:d.assignments,submissions:d.submissions,liveClasses:d.liveClasses,announcements:d.announcements,posts:d.posts,notifications:d.notifications,receipts:d.receipts,certificates:d.certificates,teachers:d.teachers.map(sanitizeUser),messageLogs:d.messageLogs,doubts:d.doubts||[],comments:d.comments||[],communityMessages:d.communityMessages||[]};
 }
 function requireStudent(req,res,next){ const token=req.headers['x-student-token']; const d=load(); const u=d.users.find(x=>x.sessionToken===token&&(x.role==='student'||x.role==='superadmin')); if(!u)return res.status(401).json({error:'Session expired. Please login again.'}); req.user=u; next(); }
 function requireAdmin(req,res,next){ const token=req.headers['x-admin-token']; if(!adminSessions.has(token))return res.status(401).json({error:'Admin login required.'}); req.admin=true; next(); }
@@ -556,6 +556,40 @@ app.post('/api/admin/doubt/:id/reply',requireAdmin,(req,res)=>{const d=load(),q=
 app.post('/api/admin/doubt/:id/delete',requireAdmin,(req,res)=>{const d=load(),i=d.doubts.findIndex(x=>x.id===req.params.id);if(i<0)return res.status(404).json({error:'Doubt not found'});d.doubts.splice(i,1);save(d);res.json({ok:true});});
 app.post('/api/comment',requireStudent,(req,res)=>{const d=load(),courseId=String(req.body.courseId||''),lessonId=String(req.body.lessonId||'');if(courseId&&!isActiveEnrollment(d,req.user,courseId))return res.status(403).json({error:'Course access is inactive.'});const text=String(req.body.text||'').trim();if(!text)return res.status(400).json({error:'Comment cannot be empty.'});const c={id:id('COM'),studentId:req.user.id,studentName:req.user.name,courseId,lessonId,text,createdAt:new Date().toISOString()};d.comments.unshift(c);save(d);res.json({ok:true,comment:c});});
 app.post('/api/admin/comment/:id/delete',requireAdmin,(req,res)=>{const d=load(),i=d.comments.findIndex(x=>x.id===req.params.id);if(i<0)return res.status(404).json({error:'Comment not found'});d.comments.splice(i,1);save(d);res.json({ok:true});});
+app.get('/api/community',requireStudent,(req,res)=>{
+  const d=load(),courseId=String(req.query.courseId||'').trim();
+  if(!courseId)return res.status(400).json({error:'Course is required.'});
+  const c=d.courses.find(x=>String(x.id)===courseId); if(!c)return res.status(404).json({error:'Course not found.'});
+  if(!isActiveEnrollment(d,req.user,courseId))return res.status(403).json({error:'Community access is available only to active students of this course.'});
+  const messages=(d.communityMessages||[]).filter(x=>String(x.courseId)===courseId).sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt)).slice(-100);
+  res.json({ok:true,course:{id:c.id,title:c.title},messages});
+});
+app.post('/api/community/message',requireStudent,(req,res)=>{
+  const d=load(),courseId=String(req.body.courseId||'').trim(),text=String(req.body.text||'').trim();
+  if(!courseId)return res.status(400).json({error:'Course is required.'});
+  if(!text)return res.status(400).json({error:'Message cannot be empty.'});
+  if(text.length>1000)return res.status(400).json({error:'Message must be 1000 characters or less.'});
+  const c=d.courses.find(x=>String(x.id)===courseId); if(!c)return res.status(404).json({error:'Course not found.'});
+  if(!isActiveEnrollment(d,req.user,courseId))return res.status(403).json({error:'Community access is available only to active students of this course.'});
+  d.communityMessages=d.communityMessages||[];
+  const m={id:id('CHAT'),courseId,studentId:req.user.id,senderRole:'student',senderName:req.user.name||'Student',text,createdAt:new Date().toISOString()};
+  d.communityMessages.push(m); if(d.communityMessages.length>5000)d.communityMessages=d.communityMessages.slice(-5000);
+  save(d); res.json({ok:true,message:m});
+});
+app.post('/api/admin/community/message',requireAdmin,(req,res)=>{
+  const d=load(),courseId=String(req.body.courseId||'').trim(),text=String(req.body.text||'').trim();
+  if(!courseId)return res.status(400).json({error:'Course is required.'});
+  if(!text)return res.status(400).json({error:'Message cannot be empty.'});
+  if(text.length>1000)return res.status(400).json({error:'Message must be 1000 characters or less.'});
+  const c=d.courses.find(x=>String(x.id)===courseId); if(!c)return res.status(404).json({error:'Course not found.'});
+  d.communityMessages=d.communityMessages||[];
+  const m={id:id('CHAT'),courseId,senderRole:'admin',senderName:"Hafiz Shahid's Academy",text,createdAt:new Date().toISOString()};
+  d.communityMessages.push(m); if(d.communityMessages.length>5000)d.communityMessages=d.communityMessages.slice(-5000);
+  d.notifications=d.notifications||[];
+  d.users.filter(u=>u.role==='student'&&u.status==='active'&&isActiveEnrollment(d,u,courseId)).forEach(u=>d.notifications.unshift({id:id('NOT'),studentId:u.id,type:'community',title:`New message in ${c.title}`,text:text.slice(0,180),createdAt:new Date().toISOString(),read:false}));
+  save(d); res.json({ok:true,message:m});
+});
+app.post('/api/admin/community/:id/delete',requireAdmin,(req,res)=>{const d=load(),i=(d.communityMessages||[]).findIndex(x=>x.id===req.params.id);if(i<0)return res.status(404).json({error:'Community message not found'});d.communityMessages.splice(i,1);save(d);res.json({ok:true});});
 
 app.post('/api/admin/post',requireAdmin,upload.single('imageFile'),(req,res)=>{const d=load();let image=req.body.image||'';if(req.file){if(!String(req.file.mimetype||'').startsWith('image/')){try{fs.unlinkSync(req.file.path)}catch{};return res.status(400).json({error:'Post image must be an image.'});}if(Number(req.file.size||0)>6*1024*1024){try{fs.unlinkSync(req.file.path)}catch{};return res.status(400).json({error:'Post image must be 6 MB or smaller.'});}image=imageDataUrl(req.file);if(!image)return res.status(400).json({error:'Could not save the post image.'});}const p={id:id('POST'),title:String(req.body.title||'').trim(),text:req.body.text||'',image,createdAt:new Date().toISOString()};if(!p.title)return res.status(400).json({error:'Post title is required.'});d.posts.unshift(p);save(d);res.json({ok:true,post:p});});
 app.post('/api/admin/post/:id/edit',requireAdmin,upload.single('imageFile'),(req,res)=>{const d=load(),p=d.posts.find(x=>x.id===req.params.id);if(!p)return res.status(404).json({error:'Post not found'});if(req.body.title!==undefined)p.title=req.body.title;if(req.body.text!==undefined)p.text=req.body.text;if(req.file){if(!String(req.file.mimetype||'').startsWith('image/')){try{fs.unlinkSync(req.file.path)}catch{};return res.status(400).json({error:'Post image must be an image.'});}if(Number(req.file.size||0)>6*1024*1024){try{fs.unlinkSync(req.file.path)}catch{};return res.status(400).json({error:'Post image must be 6 MB or smaller.'});}const data=imageDataUrl(req.file);if(!data)return res.status(400).json({error:'Could not save the post image.'});p.image=data;}else if(req.body.image!==undefined)p.image=req.body.image;save(d);res.json({ok:true,post:p});});
