@@ -1,13 +1,14 @@
 {
   "name": "Hafiz Shahid's Academy",
   "short_name": "HSA Academy",
-  "start_url": "/",
+  "description": "Hafiz Shahid's Academy mobile learning app",
+  "start_url": "./",
   "display": "standalone",
-  "background_color": "#071427",
-  "theme_color": "#0a1b35",
-  "description": "Hafiz Shahid's Academy — online learning platform",
+  "background_color": "#f5f8ff",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
   "icons": [
-    {"src":"/academy-mark.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
-    {"src":"/academy-mark.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+    {"src":"academy-mark.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
+    {"src":"academy-logo.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
   ]
 }

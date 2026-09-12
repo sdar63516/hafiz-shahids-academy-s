@@ -1,35 +1,26 @@
-# Hafiz Shahid's Academy — Live v6
+# Hafiz Shahid's Academy — App V1
 
-## Render Environment Variables
+A standalone, mobile-first functional app prototype.
 
-Add these in Render → Environment:
+## Included
+- Student email OTP login (demo OTP; production will use Brevo)
+- Remembered login/session for direct dashboard on next open
+- Student: Home, Courses, Course Details, Classes, Assignments, Certificates, Profile
+- Admin: Dashboard, Courses, Posts, Recorded/Live Classes, Assignments, Students, Purchases, Certificates
+- Admin CRUD: add/edit/delete for every content type
+- Course cover image upload/replace
+- Post image upload/replace
+- Syllabus editing
+- Responsive multicolor UI
+- Browser local persistence via localStorage for prototype testing
+- Uses the supplied Hafiz Shahid's Academy branding
 
-- `NODE_ENV` = `production`
-- `DATABASE_URL` = your Neon PostgreSQL connection string
-- `SUPER_ADMIN_PHONE` = your private owner phone number
-- `SUPER_ADMIN_PASSWORD` = your private owner password
+## Demo admin
+Username: admin
+Password: admin123
 
-**Never commit the owner phone/password or DATABASE_URL to GitHub.**
+## Run
+Extract the ZIP and open index.html in a modern browser.
 
-## Login
-
-### Super Admin
-Open `/admin.html` and enter the Super Admin password. The phone number is not displayed in the UI.
-
-### Students
-1. Student enters the exact registered name.
-2. The server returns the student's unique ID, e.g. `HSA-001`.
-3. Student enters that ID and password.
-4. Passwords are stored as salted scrypt hashes and are never returned to the browser.
-
-The owner creates student accounts from the Super Admin → Students section and assigns the student's initial password.
-
-## Deploy
-
-Render:
-- Runtime: Node
-- Build: `npm install`
-- Start: `npm start`
-- Health check: `/api/health`
-
-Neon is used automatically when `DATABASE_URL` is present. The app creates its PostgreSQL state table on first start.
+## Production next step
+Connect the UI to the existing academy API/Neon/Cloudinary/Brevo backend, then package it as a PWA/APK. The existing website is not modified by this project.
