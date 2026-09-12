@@ -7,23 +7,6 @@ const { initStore, load, save, flush, passwordHash } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-
-// CORS: the Android/PWA app is hosted separately from the academy backend.
-// Allow browser requests from the app while keeping credentials/secrets server-side.
-const CORS_ORIGINS = String(process.env.APP_ORIGINS || '*').split(',').map(s=>s.trim()).filter(Boolean);
-app.use((req,res,next)=>{
-  const origin = req.headers.origin;
-  if (CORS_ORIGINS.includes('*')) {
-    res.setHeader('Access-Control-Allow-Origin','*');
-  } else if (origin && CORS_ORIGINS.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin',origin);
-    res.setHeader('Vary','Origin');
-  }
-  res.setHeader('Access-Control-Allow-Methods','GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers','Content-Type, Accept, x-student-token, x-admin-token, Authorization');
-  if(req.method==='OPTIONS') return res.sendStatus(204);
-  next();
-});
 const ROOT = __dirname;
 const UPLOAD_ROOT = path.join(ROOT, 'uploads');
 for (const f of ['videos','materials','assignments','payments','profiles','covers','branding']) fs.mkdirSync(path.join(UPLOAD_ROOT,f), {recursive:true});
@@ -541,7 +524,34 @@ app.post('/api/admin/announcement',requireAdmin,(req,res)=>{const d=load();const
 app.post('/api/admin/notification',requireAdmin,async(req,res)=>{const d=load();const title=String(req.body.title||'').trim(),text=String(req.body.text||'').trim(),studentId=String(req.body.studentId||'').trim();if(!title||!text)return res.status(400).json({error:'Notification title and message are required.'});const item={id:id('NOT'),studentId:studentId||'',type:String(req.body.type||'academy'),title,text,createdAt:new Date().toISOString(),read:false,readBy:[]};d.notifications.unshift(item);let mailed=0;if(String(req.body.emailStudents)==='true'){const recipients=d.users.filter(u=>u.role==='student'&&u.status==='active'&&(!studentId||u.id===studentId)&&u.email);for(const u of recipients){const r=await sendStudentEmail(d,u,title,`<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:24px;color:#12243d"><h2>Hafiz Shahid's Academy</h2><h1>${title.replace(/[<>]/g,'')}</h1><p>${text.replace(/[<>]/g,'').replace(/\n/g,'<br>')}</p></div>`,`${title}\n\n${text}`,'notification');if(r.ok)mailed++;}}save(d);res.json({ok:true,notification:item,mailed});});
 app.post('/api/admin/notification/:id/delete',requireAdmin,(req,res)=>{const d=load(),i=d.notifications.findIndex(x=>x.id===req.params.id);if(i<0)return res.status(404).json({error:'Notification not found'});d.notifications.splice(i,1);save(d);res.json({ok:true});});
 app.post('/api/notification/:id/read',requireStudent,(req,res)=>{const d=load(),n=d.notifications.find(x=>x.id===req.params.id&&(!x.studentId||x.studentId===req.user.id));if(!n)return res.status(404).json({error:'Notification not found'});n.readBy=Array.isArray(n.readBy)?n.readBy:[];if(!n.readBy.includes(req.user.id))n.readBy.push(req.user.id);save(d);res.json({ok:true});});
-app.post('/api/doubt',requireStudent,(req,res)=>{const d=load(),courseId=String(req.body.courseId||'');if(courseId&&!isActiveEnrollment(d,req.user,courseId))return res.status(403).json({error:'Course access is inactive.'});const q={id:id('DOUBT'),studentId:req.user.id,courseId,lessonId:String(req.body.lessonId||''),subject:String(req.body.subject||'').trim(),message:String(req.body.message||'').trim(),reply:'',status:'Open',createdAt:new Date().toISOString(),repliedAt:''};if(!q.message)return res.status(400).json({error:'Please write your doubt.'});d.doubts.unshift(q);d.notifications.unshift({id:id('NOT'),studentId:req.user.id,type:'doubt',title:'Doubt submitted',text:'Your doubt has been sent to the academy.',createdAt:new Date().toISOString(),read:false});save(d);res.json({ok:true,doubt:q});});
+app.post('/api/public-doubt',async(req,res)=>{
+  const d=load();
+  const name=String(req.body.name||'').trim();
+  const email=String(req.body.email||'').trim().toLowerCase();
+  const phone=String(req.body.phone||'').trim();
+  const courseId=String(req.body.courseId||'').trim();
+  const subject=String(req.body.subject||'').trim();
+  const message=String(req.body.message||'').trim();
+  if(!name||!validEmail(email)||!subject||!message)return res.status(400).json({error:'Please enter your name, valid email, subject and doubt.'});
+  const course=d.courses.find(c=>String(c.id)===courseId);
+  const q={id:id('DOUBT'),studentId:'',studentName:name,studentEmail:email,phone,courseId,lessonId:'',subject,message,reply:'',status:'Open',createdAt:new Date().toISOString(),repliedAt:''};
+  d.doubts=d.doubts||[]; d.doubts.unshift(q);
+  d.notifications=d.notifications||[];
+  d.notifications.unshift({id:id('NOT'),studentId:'',type:'doubt',title:'New public doubt',text:`${name} asked: ${subject}`,createdAt:new Date().toISOString(),read:false});
+  save(d);
+  const ownerEmail=brevoConfig().fromEmail;
+  if(ownerEmail){
+    const safe=(x)=>String(x||'').replace(/[<>]/g,'');
+    await sendBrevoEmail({toEmail:ownerEmail,toName:'Academy Owner',subject:`New doubt • ${safe(name)}`,htmlContent:`<div style="font-family:Arial,sans-serif;max-width:650px;margin:auto;padding:24px;color:#12243d"><h2>Hafiz Shahid's Academy</h2><p>A new doubt was submitted from the public website.</p><p><b>Name:</b> ${safe(name)}<br><b>Email:</b> ${safe(email)}<br><b>Phone:</b> ${safe(phone||'Not provided')}<br><b>Course:</b> ${safe(course?.title||'General question')}</p><h3>${safe(subject)}</h3><p style="white-space:pre-wrap">${safe(message)}</p></div>`,textContent:`New doubt from ${name} (${email})
+Course: ${course?.title||'General question'}
+Subject: ${subject}
+
+${message}`});
+  }
+  res.json({ok:true,doubtId:q.id});
+});
+
+app.post('/api/doubt',requireStudent,(req,res)=>{const d=load(),courseId=String(req.body.courseId||'');if(courseId&&!isActiveEnrollment(d,req.user,courseId))return res.status(403).json({error:'Course access is inactive.'});const q={id:id('DOUBT'),studentId:req.user.id,studentName:req.user.name||'',studentEmail:req.user.email||'',phone:req.user.phone||'',courseId,lessonId:String(req.body.lessonId||''),subject:String(req.body.subject||'').trim(),message:String(req.body.message||'').trim(),reply:'',status:'Open',createdAt:new Date().toISOString(),repliedAt:''};if(!q.message)return res.status(400).json({error:'Please write your doubt.'});d.doubts=d.doubts||[];d.doubts.unshift(q);d.notifications=d.notifications||[];d.notifications.unshift({id:id('NOT'),studentId:req.user.id,type:'doubt',title:'Doubt submitted',text:'Your doubt has been sent to the academy.',createdAt:new Date().toISOString(),read:false});save(d);res.json({ok:true,doubt:q});});
 app.post('/api/admin/doubt/:id/reply',requireAdmin,(req,res)=>{const d=load(),q=d.doubts.find(x=>x.id===req.params.id);if(!q)return res.status(404).json({error:'Doubt not found'});q.reply=String(req.body.reply||'').trim();q.status=q.reply?'Answered':'Open';q.repliedAt=q.reply?new Date().toISOString():'';if(q.reply)d.notifications.unshift({id:id('NOT'),studentId:q.studentId,type:'doubt',title:'Your doubt was answered',text:q.reply,createdAt:new Date().toISOString(),read:false});save(d);res.json({ok:true,doubt:q});});
 app.post('/api/admin/doubt/:id/delete',requireAdmin,(req,res)=>{const d=load(),i=d.doubts.findIndex(x=>x.id===req.params.id);if(i<0)return res.status(404).json({error:'Doubt not found'});d.doubts.splice(i,1);save(d);res.json({ok:true});});
 app.post('/api/comment',requireStudent,(req,res)=>{const d=load(),courseId=String(req.body.courseId||''),lessonId=String(req.body.lessonId||'');if(courseId&&!isActiveEnrollment(d,req.user,courseId))return res.status(403).json({error:'Course access is inactive.'});const text=String(req.body.text||'').trim();if(!text)return res.status(400).json({error:'Comment cannot be empty.'});const c={id:id('COM'),studentId:req.user.id,studentName:req.user.name,courseId,lessonId,text,createdAt:new Date().toISOString()};d.comments.unshift(c);save(d);res.json({ok:true,comment:c});});
