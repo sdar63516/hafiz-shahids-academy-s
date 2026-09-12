@@ -273,8 +273,10 @@ app.post('/api/auth/verify-otp',(req,res)=>{
   if(entry.attempts>=5)return res.status(429).json({error:'Too many incorrect attempts. Please request a new OTP.'});
   if(entry.otp!==otp){entry.attempts++;return res.status(401).json({error:'Invalid OTP. Please check your email and try again.'});}
   const u=d.users.find(x=>x.role==='student'&&String(x.id).toUpperCase()===studentId); if(!u)return res.status(404).json({error:'Student account not found.'});
-  u.email=email; u.sessionToken=crypto.randomBytes(32).toString('hex'); save(d); emailOtpSessions.delete(key); res.json({ok:true,token:u.sessionToken,user:sanitizeUser(u)});
+  u.email=email; u.sessionToken=crypto.randomBytes(32).toString('hex'); if(!u.rememberToken)u.rememberToken=crypto.randomBytes(32).toString('hex'); save(d); emailOtpSessions.delete(key); res.json({ok:true,token:u.sessionToken,rememberToken:u.rememberToken,user:sanitizeUser(u)});
 });
+
+app.post('/api/auth/remember-login',(req,res)=>{const d=load();const email=String(req.body.email||'').trim().toLowerCase();const rememberToken=String(req.body.rememberToken||'');if(!validEmail(email)||!rememberToken)return res.status(400).json({error:'Trusted login information is missing.'});const u=d.users.find(x=>x.role==='student'&&String(x.email||'').toLowerCase()===email&&String(x.rememberToken||'')===rememberToken&&x.status==='active');if(!u)return res.status(401).json({error:'This device login has expired. Please verify by OTP once again.'});u.sessionToken=crypto.randomBytes(32).toString('hex');save(d);res.json({ok:true,token:u.sessionToken,user:sanitizeUser(u)});});
 
 app.post('/api/auth/student-id',(req,res)=>{
   const d=load();
