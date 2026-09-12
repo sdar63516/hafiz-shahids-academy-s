@@ -12,7 +12,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/style.css"><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#0a1b35">
 </head>
 
 <body>
@@ -29,7 +29,7 @@
                 <p>Learn through recorded classes, live sessions, assignments and study material — all in one simple academy experience.</p>
                 <div class="public-actions">
                     <button class="primary" onclick="openLoginPanel()">Enter Academy →</button>
-                    <a class="outline" href="#publicFeatures" onclick="document.getElementById('publicFeatures').scrollIntoView({behavior:'smooth'});return false">Explore</a>
+                    
                 </div>
                 <div class="public-pills"><span>Secure Student Access</span><span>Live + Recorded Classes</span><span>Certificates</span></div>
             </div>
@@ -81,8 +81,7 @@
                     onclick="go('materials')" data-nav="materials">▤ Study Material</button><button
                     onclick="go('downloads')" data-nav="downloads">⇩ Downloads</button><button
                     onclick="go('assignments')" data-nav="assignments">✓ Assignments</button><button
-                    onclick="go('live')" data-nav="live">◉ Live Classes</button><button onclick="go('certificates')"
-                    data-nav="certificates">◇ My Certificate</button>
+                    onclick="go('live')" data-nav="live">◉ Live Classes</button><button onclick="go('certificates')" data-nav="certificates">◇ My Certificate</button><button onclick="go('doubts')" data-nav="doubts">? My Doubts</button><button onclick="go('search')" data-nav="search">⌕ Search Academy</button>
                 <div class="side-title">ACCOUNT</div><button onclick="go('profile')" data-nav="profile">◯ About
                     Me</button><button onclick="go('settings')" data-nav="settings">⚙ Settings</button><button
                     onclick="logout()">↪ Logout</button>
